@@ -54,35 +54,42 @@ export function Navbar() {
             <Moon className="absolute h-5 w-5 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
           </Button>
 
-          {user ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="relative">
-                  <User className="h-5 w-5" />
-                  {profile?.isAdmin && <span className="absolute top-0 right-0 h-2 w-2 bg-red-500 rounded-full" />}
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem asChild>
-                  <Link href="/account" className="cursor-pointer">Личный кабинет</Link>
-                </DropdownMenuItem>
-                {profile?.isAdmin && (
-                  <DropdownMenuItem asChild>
-                    <Link href="/admin" className="cursor-pointer flex items-center">
-                      <LayoutDashboard className="mr-2 h-4 w-4" />
-                      Админ-панель
+            {user ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" className="relative h-10 w-10 rounded-full bg-muted/50 hover:bg-muted transition-colors">
+                    <User className="h-5 w-5" />
+                    {profile?.isAdmin && <span className="absolute top-1 right-1 h-2 w-2 bg-red-500 rounded-full border-2 border-background" />}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56 rounded-2xl p-2 bg-background/80 backdrop-blur-xl border-white/20 shadow-2xl">
+                  <DropdownMenuItem asChild className="rounded-xl px-4 py-3 cursor-pointer">
+                    <Link href="/account" className="flex items-center gap-2">
+                      <User className="w-4 h-4" />
+                      Личный кабинет
                     </Link>
                   </DropdownMenuItem>
-                )}
-                <DropdownMenuItem onClick={logout} className="text-destructive cursor-pointer">
-                  <LogOut className="mr-2 h-4 w-4" />
-                  Выйти
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          ) : (
-            <Button onClick={() => setIsAuthModalOpen(true)}>Войти</Button>
-          )}
+                  {profile?.isAdmin && (
+                    <DropdownMenuItem asChild className="rounded-xl px-4 py-3 cursor-pointer">
+                      <Link href="/admin" className="flex items-center gap-2">
+                        <LayoutDashboard className="w-4 h-4" />
+                        Админ-панель
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
+                  <div className="h-px bg-white/10 my-1" />
+                  <DropdownMenuItem onClick={logout} className="rounded-xl px-4 py-3 text-destructive cursor-pointer hover:bg-destructive/10 focus:bg-destructive/10">
+                    <LogOut className="mr-2 h-4 w-4" />
+                    Выйти
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              <Button asChild className="rounded-full px-6 h-10 font-bold shadow-lg shadow-primary/20 hover:shadow-primary/40 transition-all">
+                <Link href="/login">Войти</Link>
+              </Button>
+            )}
+
 
           <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}>
             {isMobileMenuOpen ? <X /> : <Menu />}
