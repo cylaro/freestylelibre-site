@@ -413,7 +413,7 @@ export function CartSheet() {
                             <Truck className="w-5 h-5 text-primary" />
                             Способ получения
                           </Label>
-                          <div className="grid grid-cols-2 gap-4">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <button
                               onClick={() => setFormData({...formData, deliveryMethod: "pickup"})}
                               className={`p-4 rounded-2xl border-2 transition-all text-left ${formData.deliveryMethod === "pickup" ? "border-primary bg-primary/5 shadow-md" : "border-muted hover:border-muted-foreground/30"}`}

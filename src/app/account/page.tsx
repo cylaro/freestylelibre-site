@@ -513,7 +513,7 @@ export default function AccountPage() {
               <TabsContent value="orders">
                 <motion.div {...tabMotion} className="space-y-6">
                 {orders.length === 0 ? (
-                  <Card className="rounded-[2.5rem] border-white/20 p-20 text-center bg-background/40 backdrop-blur-xl border-dashed border-2">
+                  <Card className="rounded-[2.5rem] border-white/20 p-8 sm:p-20 text-center bg-background/40 backdrop-blur-xl border-dashed border-2">
                     <div className="w-20 h-20 rounded-full bg-muted mx-auto mb-6 flex items-center justify-center">
                       <Package className="w-10 h-10 opacity-20" />
                     </div>
@@ -542,7 +542,7 @@ export default function AccountPage() {
                               <Star className="w-4 h-4" /> Оставить отзыв
                             </Button>
                           </DialogTrigger>
-                          <DialogContent className="rounded-[2.5rem] bg-background/80 backdrop-blur-2xl">
+                          <DialogContent className="rounded-[2.5rem] w-full sm:max-w-lg bg-background/80 backdrop-blur-2xl">
                             <DialogHeader>
                               <DialogTitle className="text-2xl font-black">Ваш отзыв</DialogTitle>
                               <DialogDescription className="text-muted-foreground">
@@ -685,7 +685,7 @@ export default function AccountPage() {
                   setOrderEditOpen(open);
                   if (!open) setEditingOrder(null);
                 }}>
-                  <DialogContent className="rounded-[2.5rem] max-w-3xl bg-background/80 backdrop-blur-2xl">
+                  <DialogContent className="rounded-[2.5rem] w-full sm:max-w-3xl bg-background/80 backdrop-blur-2xl">
                     <DialogHeader>
                       <DialogTitle className="text-2xl font-black">
                         Изменить заказ {editingOrder ? `#${editingOrder.id.slice(-6)}` : ""}

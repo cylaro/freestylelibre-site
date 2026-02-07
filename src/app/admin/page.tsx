@@ -64,6 +64,7 @@ import {
   Eye
 } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 import { 
   Chart as ChartJS, 
   CategoryScale, 
@@ -1323,56 +1324,56 @@ export default function AdminPage() {
         {/* Header Stats */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           <Card className="bg-background/60 backdrop-blur-xl border-white/20 shadow-xl rounded-3xl overflow-hidden">
-            <CardContent className="p-6 flex items-center justify-between">
+            <CardContent className="p-4 sm:p-6 flex items-center justify-between gap-4">
               <div>
                 <p className="text-sm font-medium text-muted-foreground mb-1 uppercase tracking-wider">Выручка</p>
-                <h3 className={`text-3xl font-black ${stats.totalSales >= 0 ? "text-emerald-500" : "text-red-500"}`}>
+                <h3 className={`text-2xl sm:text-3xl font-black ${stats.totalSales >= 0 ? "text-emerald-500" : "text-red-500"}`}>
                   {stats.totalSales.toLocaleString()} ₽
                 </h3>
                 <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
                   Текущий месяц: продажи − закупки
                 </p>
               </div>
-              <div className="w-14 h-14 rounded-2xl bg-emerald-500/10 flex items-center justify-center text-emerald-500">
-                <Wallet className="w-7 h-7" />
+              <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-emerald-500/10 flex items-center justify-center text-emerald-500">
+                <Wallet className="w-6 h-6 sm:w-7 sm:h-7" />
               </div>
             </CardContent>
           </Card>
           <Card className="bg-background/60 backdrop-blur-xl border-white/20 shadow-xl rounded-3xl overflow-hidden">
-            <CardContent className="p-6 flex items-center justify-between">
+            <CardContent className="p-4 sm:p-6 flex items-center justify-between gap-4">
               <div>
                 <p className="text-sm font-medium text-muted-foreground mb-1 uppercase tracking-wider">Заказы (New)</p>
-                <h3 className="text-3xl font-black">{stats.pendingOrders}</h3>
+                <h3 className="text-2xl sm:text-3xl font-black">{stats.pendingOrders}</h3>
                 <p className="text-xs text-blue-500 mt-1 flex items-center gap-1">
                   Требуют внимания
                 </p>
               </div>
-              <div className="w-14 h-14 rounded-2xl bg-blue-500/10 flex items-center justify-center text-blue-500">
-                <ShoppingCart className="w-7 h-7" />
+              <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-blue-500/10 flex items-center justify-center text-blue-500">
+                <ShoppingCart className="w-6 h-6 sm:w-7 sm:h-7" />
               </div>
             </CardContent>
           </Card>
           <Card className="bg-background/60 backdrop-blur-xl border-white/20 shadow-xl rounded-3xl overflow-hidden">
-            <CardContent className="p-6 flex items-center justify-between">
+            <CardContent className="p-4 sm:p-6 flex items-center justify-between gap-4">
               <div>
                 <p className="text-sm font-medium text-muted-foreground mb-1 uppercase tracking-wider">Клиенты</p>
-                <h3 className="text-3xl font-black">{stats.activeUsers}</h3>
+                <h3 className="text-2xl sm:text-3xl font-black">{stats.activeUsers}</h3>
                 <p className="text-xs text-orange-500 mt-1">Всего зарегистрировано</p>
               </div>
-              <div className="w-14 h-14 rounded-2xl bg-orange-500/10 flex items-center justify-center text-orange-500">
-                <Users className="w-7 h-7" />
+              <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-orange-500/10 flex items-center justify-center text-orange-500">
+                <Users className="w-6 h-6 sm:w-7 sm:h-7" />
               </div>
             </CardContent>
           </Card>
           <Card className="bg-background/60 backdrop-blur-xl border-white/20 shadow-xl rounded-3xl overflow-hidden">
-            <CardContent className="p-6 flex items-center justify-between">
+            <CardContent className="p-4 sm:p-6 flex items-center justify-between gap-4">
               <div>
                 <p className="text-sm font-medium text-muted-foreground mb-1 uppercase tracking-wider">Средний чек</p>
-                <h3 className="text-3xl font-black">{stats.avgOrderValue.toLocaleString()} ₽</h3>
+                <h3 className="text-2xl sm:text-3xl font-black">{stats.avgOrderValue.toLocaleString()} ₽</h3>
                 <p className="text-xs text-muted-foreground mt-1">На один заказ</p>
               </div>
-              <div className="w-14 h-14 rounded-2xl bg-purple-500/10 flex items-center justify-center text-purple-500">
-                <BarChart3 className="w-7 h-7" />
+              <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-purple-500/10 flex items-center justify-center text-purple-500">
+                <BarChart3 className="w-6 h-6 sm:w-7 sm:h-7" />
               </div>
             </CardContent>
           </Card>
@@ -1380,13 +1381,13 @@ export default function AdminPage() {
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-8">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-            <TabsList className="bg-background/60 backdrop-blur-xl border-white/20 p-1.5 h-auto rounded-2xl gap-2 flex flex-wrap lg:flex-nowrap overflow-x-auto lg:overflow-x-visible">
-              <TabsTrigger value="dashboard" className="rounded-xl px-5 py-2.5 gap-2 data-[state=active]:bg-primary data-[state=active]:text-white transition-all"><BarChart3 className="w-4 h-4" /> Дашборд</TabsTrigger>
-              <TabsTrigger value="orders" className="rounded-xl px-5 py-2.5 gap-2 data-[state=active]:bg-primary data-[state=active]:text-white transition-all"><ShoppingCart className="w-4 h-4" /> Заказы</TabsTrigger>
-              <TabsTrigger value="finance" className="rounded-xl px-5 py-2.5 gap-2 data-[state=active]:bg-primary data-[state=active]:text-white transition-all"><Wallet className="w-4 h-4" /> Финансы</TabsTrigger>
-              <TabsTrigger value="products" className="rounded-xl px-5 py-2.5 gap-2 data-[state=active]:bg-primary data-[state=active]:text-white transition-all"><Package className="w-4 h-4" /> Товары</TabsTrigger>
-              <TabsTrigger value="users" className="rounded-xl px-5 py-2.5 gap-2 data-[state=active]:bg-primary data-[state=active]:text-white transition-all"><Users className="w-4 h-4" /> Клиенты</TabsTrigger>
-              <TabsTrigger value="reviews" className="rounded-xl px-5 py-2.5 gap-2 data-[state=active]:bg-primary data-[state=active]:text-white transition-all relative">
+            <TabsList className="bg-background/60 backdrop-blur-xl border-white/20 p-1.5 h-auto rounded-2xl gap-2 flex w-full flex-nowrap overflow-x-auto md:flex-wrap md:overflow-x-visible">
+              <TabsTrigger value="dashboard" className="rounded-xl px-5 py-2.5 gap-2 data-[state=active]:bg-primary data-[state=active]:text-white transition-all whitespace-nowrap"><BarChart3 className="w-4 h-4" /> Дашборд</TabsTrigger>
+              <TabsTrigger value="orders" className="rounded-xl px-5 py-2.5 gap-2 data-[state=active]:bg-primary data-[state=active]:text-white transition-all whitespace-nowrap"><ShoppingCart className="w-4 h-4" /> Заказы</TabsTrigger>
+              <TabsTrigger value="finance" className="rounded-xl px-5 py-2.5 gap-2 data-[state=active]:bg-primary data-[state=active]:text-white transition-all whitespace-nowrap"><Wallet className="w-4 h-4" /> Финансы</TabsTrigger>
+              <TabsTrigger value="products" className="rounded-xl px-5 py-2.5 gap-2 data-[state=active]:bg-primary data-[state=active]:text-white transition-all whitespace-nowrap"><Package className="w-4 h-4" /> Товары</TabsTrigger>
+              <TabsTrigger value="users" className="rounded-xl px-5 py-2.5 gap-2 data-[state=active]:bg-primary data-[state=active]:text-white transition-all whitespace-nowrap"><Users className="w-4 h-4" /> Клиенты</TabsTrigger>
+              <TabsTrigger value="reviews" className="rounded-xl px-5 py-2.5 gap-2 data-[state=active]:bg-primary data-[state=active]:text-white transition-all relative whitespace-nowrap">
                 <MessageSquare className="w-4 h-4" /> Отзывы
                 {reviews.filter(r => r.status === 'pending').length > 0 && (
                   <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center border-2 border-background">
@@ -1394,12 +1395,12 @@ export default function AdminPage() {
                   </span>
                 )}
               </TabsTrigger>
-              <TabsTrigger value="settings" className="rounded-xl px-5 py-2.5 gap-2 data-[state=active]:bg-primary data-[state=active]:text-white transition-all"><Settings className="w-4 h-4" /> Настройки</TabsTrigger>
-              <TabsTrigger value="status" className="rounded-xl px-5 py-2.5 gap-2 data-[state=active]:bg-primary data-[state=active]:text-white transition-all"><Activity className="w-4 h-4" /> Статусы</TabsTrigger>
-              <TabsTrigger value="logs" className="rounded-xl px-5 py-2.5 gap-2 data-[state=active]:bg-primary data-[state=active]:text-white transition-all"><ClipboardList className="w-4 h-4" /> Логи</TabsTrigger>
+              <TabsTrigger value="settings" className="rounded-xl px-5 py-2.5 gap-2 data-[state=active]:bg-primary data-[state=active]:text-white transition-all whitespace-nowrap"><Settings className="w-4 h-4" /> Настройки</TabsTrigger>
+              <TabsTrigger value="status" className="rounded-xl px-5 py-2.5 gap-2 data-[state=active]:bg-primary data-[state=active]:text-white transition-all whitespace-nowrap"><Activity className="w-4 h-4" /> Статусы</TabsTrigger>
+              <TabsTrigger value="logs" className="rounded-xl px-5 py-2.5 gap-2 data-[state=active]:bg-primary data-[state=active]:text-white transition-all whitespace-nowrap"><ClipboardList className="w-4 h-4" /> Логи</TabsTrigger>
             </TabsList>
 
-            <div className="flex items-center gap-3 w-full md:w-auto">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full md:w-auto">
               <div className="relative flex-1 md:w-64">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input 
@@ -1421,7 +1422,7 @@ export default function AdminPage() {
                   <CardTitle>Продажи (шт.)</CardTitle>
                   <CardDescription>Количество проданных сенсоров за 6 месяцев</CardDescription>
                 </CardHeader>
-                <CardContent className="h-[260px] md:h-[350px]">
+                <CardContent className="h-[220px] sm:h-[260px] md:h-[350px]">
                   <Line 
                     data={{
                       labels: salesByMonth.labels,
@@ -1443,7 +1444,7 @@ export default function AdminPage() {
                   <CardTitle>Популярность моделей</CardTitle>
                   <CardDescription>Распределение продаж по товарам</CardDescription>
                 </CardHeader>
-                <CardContent className="h-[260px] md:h-[350px]">
+                <CardContent className="h-[220px] sm:h-[260px] md:h-[350px]">
                   <Bar 
                     data={{
                       labels: productPopularity.labels,
@@ -1489,6 +1490,7 @@ export default function AdminPage() {
               </CardHeader>
               <AnimatePresence mode="wait">
                 <motion.div key={orderListTab} {...panelMotion}>
+                  <div className="hidden md:block">
                   <Table>
                     <TableHeader className="bg-muted/50">
                       <TableRow>
@@ -1556,14 +1558,14 @@ export default function AdminPage() {
                                         <Eye className="w-4 h-4" /> Детали
                                       </Button>
                                     </DialogTrigger>
-                                    <DialogContent className="max-w-2xl rounded-[2rem]">
+                                    <DialogContent className="rounded-[2rem] w-full sm:max-w-2xl">
                                       <DialogHeader>
                                         <DialogTitle className="text-2xl font-black">Детали заказа #{order.id.slice(-6)}</DialogTitle>
                                         <DialogDescription className="text-muted-foreground">
                                           Информация о составе заказа и параметрах доставки.
                                         </DialogDescription>
                                       </DialogHeader>
-                                      <div className="grid md:grid-cols-2 gap-8 py-6">
+                                      <div className="grid gap-6 md:grid-cols-2 py-6">
                                         <div className="space-y-6">
                                           <div>
                                             <h4 className="text-xs font-black uppercase text-muted-foreground mb-3">Товары</h4>
@@ -1649,6 +1651,162 @@ export default function AdminPage() {
                       )}
                     </TableBody>
                   </Table>
+                  </div>
+                  <div className="md:hidden px-4 pb-4 space-y-4">
+                    {filteredOrders.length === 0 ? (
+                      <div className="text-center text-muted-foreground py-8">Нет заказов по текущему фильтру</div>
+                    ) : (
+                      filteredOrders.map((order) => {
+                        const stockIssue = getOrderStockIssue(order);
+                        const statusInfo = getOrderStatusInfo(order.status);
+                        const statusValue = order.status;
+                        const itemsPreview = order.items.slice(0, 2);
+                        const extraItems = Math.max(0, order.items.length - itemsPreview.length);
+                        return (
+                          <Card key={order.id} className="rounded-2xl border-white/15 bg-background/60 shadow-lg">
+                            <CardContent className="p-4 space-y-4">
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <div className="text-[10px] uppercase tracking-widest text-muted-foreground">Заказ</div>
+                                  <div className="text-base font-black">#{order.id.slice(-6)}</div>
+                                  <div className="text-[11px] text-muted-foreground mt-1">
+                                    {formatTimestamp(order.createdAt, "ru-RU", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) || "—"}
+                                  </div>
+                                </div>
+                                <Badge className={`rounded-full px-3 py-1 text-[11px] font-bold ${statusInfo.badgeClass}`}>
+                                  {statusInfo.label}
+                                </Badge>
+                              </div>
+
+                              <div className="space-y-1">
+                                <div className="text-sm font-bold">{order.name || "Аноним"}</div>
+                                <div className="text-xs text-muted-foreground">{order.phoneE164 || order.phone || "—"}</div>
+                                <div className="text-xs text-muted-foreground">{formatTelegramValue(order.telegram)}</div>
+                              </div>
+
+                              <div className="space-y-1">
+                                {order.items.length === 0 ? (
+                                  <span className="text-xs text-muted-foreground">Состав не указан</span>
+                                ) : (
+                                  <div className="space-y-1">
+                                    {itemsPreview.map((it, idx) => (
+                                      <div key={`${it.productId}-${idx}`} className="flex items-center justify-between text-xs bg-muted/30 border border-white/5 rounded-xl px-3 py-2">
+                                        <span className="font-semibold text-foreground/80 line-clamp-1">{it.name}</span>
+                                        <span className="text-[11px] font-semibold text-muted-foreground">x{it.quantity}</span>
+                                      </div>
+                                    ))}
+                                    {extraItems > 0 && (
+                                      <div className="text-[10px] text-muted-foreground">+ еще {extraItems}</div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="flex items-center justify-between">
+                                <div className="text-lg font-black text-primary">{order.totalPrice.toLocaleString()} ₽</div>
+                                <div className="text-xs text-muted-foreground">{order.items.length} поз.</div>
+                              </div>
+
+                              <div className="grid gap-2">
+                                <Select value={statusValue} onValueChange={(value) => handleUpdateOrderStatus(order.id, value, stockIssue)}>
+                                  <SelectTrigger className={`h-10 w-full rounded-xl px-3 text-[11px] font-bold border border-white/10 ${statusInfo.badgeClass}`}>
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent className="rounded-2xl border-white/10 bg-background/90 backdrop-blur-xl shadow-2xl">
+                                    {["new", "processing", "delivered", "cancelled"].map((statusOption) => {
+                                      const info = getOrderStatusInfo(statusOption);
+                                      return (
+                                        <SelectItem
+                                          key={statusOption}
+                                          value={statusOption}
+                                          className="data-[highlighted]:bg-muted/40 data-[state=checked]:bg-transparent"
+                                        >
+                                          <span className={`text-[11px] font-semibold ${info.textClass}`}>{info.label}</span>
+                                        </SelectItem>
+                                      );
+                                    })}
+                                  </SelectContent>
+                                </Select>
+
+                                <div className="grid gap-2 sm:grid-cols-2">
+                                  <Dialog>
+                                    <DialogTrigger asChild>
+                                      <Button variant="outline" className="h-10 w-full rounded-xl gap-2">
+                                        <Eye className="w-4 h-4" /> Детали
+                                      </Button>
+                                    </DialogTrigger>
+                                    <DialogContent className="rounded-[2rem] w-full sm:max-w-2xl">
+                                      <DialogHeader>
+                                        <DialogTitle className="text-2xl font-black">Детали заказа #{order.id.slice(-6)}</DialogTitle>
+                                        <DialogDescription className="text-muted-foreground">
+                                          Информация о составе заказа и параметрах доставки.
+                                        </DialogDescription>
+                                      </DialogHeader>
+                                      <div className="grid gap-6 md:grid-cols-2 py-6">
+                                        <div className="space-y-6">
+                                          <div>
+                                            <h4 className="text-xs font-black uppercase text-muted-foreground mb-3">Товары</h4>
+                                            <div className="space-y-3">
+                                              {order.items.map((it, i) => (
+                                                <div key={i} className="flex justify-between items-center bg-muted/30 p-3 rounded-2xl border">
+                                                  <span className="text-sm font-bold">{it.name}</span>
+                                                  <span className="text-xs font-black bg-primary/10 text-primary px-2 py-1 rounded-lg">x{it.quantity}</span>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          </div>
+                                        </div>
+                                        <div className="space-y-6">
+                                          <div>
+                                            <h4 className="text-xs font-black uppercase text-muted-foreground mb-3">Клиент</h4>
+                                            <div className="bg-muted/30 p-4 rounded-2xl border space-y-2 text-sm">
+                                              <p><span className="text-muted-foreground">Имя:</span> <b>{order.name || "—"}</b></p>
+                                              <p><span className="text-muted-foreground">Телефон:</span> <b>{order.phoneE164 || order.phone || "—"}</b></p>
+                                              <p><span className="text-muted-foreground">TG:</span> <b>{formatTelegramValue(order.telegram)}</b></p>
+                                              {order.userEmail && (
+                                                <p><span className="text-muted-foreground">Email:</span> <b>{order.userEmail}</b></p>
+                                              )}
+                                            </div>
+                                          </div>
+                                          <div>
+                                            <h4 className="text-xs font-black uppercase text-muted-foreground mb-3">Получение</h4>
+                                            <div className="bg-muted/30 p-4 rounded-2xl border space-y-2 text-sm">
+                                              <p><span className="text-muted-foreground">Метод:</span> <b>{order.deliveryMethod === 'delivery' ? 'Доставка' : 'Самовывоз'}</b></p>
+                                              {order.deliveryMethod === "delivery" && (
+                                                <>
+                                                <p><span className="text-muted-foreground">Служба:</span> <b>{resolveDeliveryServiceLabel(order.deliveryService) || "—"}</b></p>
+                                                  <p><span className="text-muted-foreground">Город:</span> <b>{order.city || "—"}</b></p>
+                                                </>
+                                              )}
+                                            </div>
+                                          </div>
+                                          {order.customFields && Object.keys(order.customFields).length > 0 && (
+                                            <div>
+                                              <h4 className="text-xs font-black uppercase text-muted-foreground mb-3">Доп. поля</h4>
+                                              <div className="bg-muted/30 p-4 rounded-2xl border space-y-2 text-sm">
+                                                {Object.entries(order.customFields).map(([key, value]) => (
+                                                  <p key={key}><span className="text-muted-foreground">{key}:</span> <b>{value || "—"}</b></p>
+                                                ))}
+                                              </div>
+                                            </div>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </DialogContent>
+                                  </Dialog>
+                                  {order.status !== "delivered" && (
+                                    <Button variant="outline" className="h-10 w-full rounded-xl gap-2" onClick={() => openOrderEditDialog(order)}>
+                                      <Pencil className="w-4 h-4" /> Изменить
+                                    </Button>
+                                  )}
+                                </div>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        );
+                      })
+                    )}
+                  </div>
                 </motion.div>
               </AnimatePresence>
             </Card>
@@ -1657,7 +1815,7 @@ export default function AdminPage() {
               setOrderEditOpen(open);
               if (!open) setEditingOrder(null);
             }}>
-              <DialogContent className="rounded-[2.5rem] max-w-3xl">
+              <DialogContent className="rounded-[2.5rem] w-full sm:max-w-3xl">
                 <DialogHeader>
                   <DialogTitle className="text-2xl font-black">
                     Редактировать заказ {editingOrder ? `#${editingOrder.id.slice(-6)}` : ""}
@@ -1800,6 +1958,7 @@ export default function AdminPage() {
                   <Plus className="w-4 h-4" /> Добавить товар
                 </Button>
               </CardHeader>
+              <div className="hidden md:block">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -1854,10 +2013,57 @@ export default function AdminPage() {
                   )}
                 </TableBody>
               </Table>
+              </div>
+              <div className="md:hidden px-4 pb-4 space-y-4">
+                {filteredProducts.length === 0 ? (
+                  <div className="text-center text-muted-foreground py-8">Товары не найдены</div>
+                ) : (
+                  filteredProducts.map(product => (
+                    <Card key={product.id} className="rounded-2xl border-white/15 bg-background/60 shadow-lg">
+                      <CardContent className="p-4 space-y-3">
+                        <div className="flex items-start gap-3">
+                          <div className="relative h-14 w-14 rounded-xl border border-white/10 bg-muted/20 overflow-hidden shrink-0 flex items-center justify-center text-[10px] text-muted-foreground">
+                            {product.imageUrl ? (
+                              <Image src={product.imageUrl} alt={product.name} fill sizes="56px" className="object-cover" />
+                            ) : (
+                              "Нет фото"
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-black">{product.name}</div>
+                            <div className="text-xs text-muted-foreground line-clamp-2">{product.description}</div>
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge className={product.inStock ? "bg-emerald-500/10 text-emerald-500 border-none" : "bg-muted text-muted-foreground border-none"}>
+                            {product.inStock ? "В наличии" : "Нет в наличии"}
+                          </Badge>
+                          {product.discountPercent > 0 ? (
+                            <Badge className="bg-orange-500/10 text-orange-500 border-none">-{product.discountPercent}%</Badge>
+                          ) : (
+                            <Badge className="bg-muted text-muted-foreground border-none">Без скидки</Badge>
+                          )}
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <div className="text-lg font-black text-primary">{product.price.toLocaleString()} ₽</div>
+                          <div className="flex items-center gap-2">
+                            <Button size="icon" variant="ghost" className="h-9 w-9 rounded-xl" onClick={() => openProductDialog(product)}>
+                              <Pencil className="w-4 h-4" />
+                            </Button>
+                            <Button size="icon" variant="ghost" className="h-9 w-9 rounded-xl text-destructive hover:bg-destructive/10" onClick={() => handleDeleteProduct(product.id)}>
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))
+                )}
+              </div>
             </Card>
 
             <Dialog open={productDialogOpen} onOpenChange={setProductDialogOpen}>
-              <DialogContent className="rounded-[2rem] max-w-2xl">
+              <DialogContent className="rounded-[2rem] w-full sm:max-w-2xl">
                 <DialogHeader>
                   <DialogTitle>{editingProduct ? "Редактировать товар" : "Новый товар"}</DialogTitle>
                   <DialogDescription className="text-muted-foreground">
@@ -2084,14 +2290,14 @@ export default function AdminPage() {
                   ) : (
                     filteredPurchases.map((purchase) => (
                         <Card key={purchase.id} className="rounded-[2rem] border-white/20 shadow-xl bg-background/40 backdrop-blur-xl">
-                          <CardContent className="p-4 space-y-2">
+                          <CardContent className="p-4 sm:p-5 space-y-3">
                           <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
                             <div>
                               <p className="text-[10px] uppercase text-muted-foreground">Закупка</p>
                               <h4 className="text-lg font-black">{purchase.productName}</h4>
                               <p className="text-xs text-muted-foreground">{formatTimestamp(purchase.date) || "—"}</p>
                             </div>
-                            <div className="text-right">
+                            <div className="text-left md:text-right">
                               <p className="text-xl font-black text-red-500">-{purchase.totalAmount.toLocaleString()} ₽</p>
                               <p className="text-xs text-muted-foreground">{purchase.qty} шт.</p>
                             </div>
@@ -2101,7 +2307,7 @@ export default function AdminPage() {
                               {purchase.comment}
                             </div>
                           )}
-                          <div className="flex justify-end gap-2">
+                          <div className="flex justify-start md:justify-end gap-2">
                             <Button size="icon" variant="ghost" className="h-9 w-9 rounded-xl" onClick={() => openPurchaseDialog(purchase)}>
                               <Pencil className="w-4 h-4" />
                             </Button>
@@ -2125,7 +2331,7 @@ export default function AdminPage() {
                       const showComment = saleComment && saleComment.toLowerCase() !== "продажа с сайта";
                       return (
                         <Card key={sale.id} className="rounded-[2rem] border-white/20 shadow-xl bg-background/40 backdrop-blur-xl">
-                          <CardContent className="p-4 space-y-2">
+                          <CardContent className="p-4 sm:p-5 space-y-3">
                             <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
                               <div>
                                 <p className="text-[10px] uppercase text-muted-foreground">Продажа</p>
@@ -2137,7 +2343,7 @@ export default function AdminPage() {
                                   </Badge>
                                 </div>
                               </div>
-                              <div className="text-right">
+                              <div className="text-left md:text-right">
                                 <p className="text-xl font-black text-emerald-500">+{sale.totalAmount.toLocaleString()} ₽</p>
                                 <p className="text-xs text-muted-foreground">{sale.qty} шт.</p>
                               </div>
@@ -2147,7 +2353,7 @@ export default function AdminPage() {
                                 {saleComment}
                               </div>
                             )}
-                            <div className="flex justify-end gap-2">
+                            <div className="flex justify-start md:justify-end gap-2">
                               <Button size="icon" variant="ghost" className="h-9 w-9 rounded-xl" onClick={() => openSaleDialog(sale)}>
                                 <Pencil className="w-4 h-4" />
                               </Button>
@@ -2167,7 +2373,7 @@ export default function AdminPage() {
             </AnimatePresence>
 
             <Dialog open={purchaseDialogOpen} onOpenChange={setPurchaseDialogOpen}>
-              <DialogContent className="rounded-[2.5rem]">
+              <DialogContent className="rounded-[2.5rem] w-full sm:max-w-xl">
                 <DialogHeader>
                   <DialogTitle>{editingPurchase ? "Редактировать закупку" : "Новая закупка"}</DialogTitle>
                   <DialogDescription className="text-muted-foreground">
@@ -2195,7 +2401,7 @@ export default function AdminPage() {
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label>Количество</Label>
                       <NumericInput value={purchaseDraft.qty} onValueChange={(value) => setPurchaseDraft({ ...purchaseDraft, qty: value })} className="h-12 rounded-xl" />
@@ -2222,7 +2428,7 @@ export default function AdminPage() {
             </Dialog>
 
             <Dialog open={saleDialogOpen} onOpenChange={setSaleDialogOpen}>
-              <DialogContent className="rounded-[2.5rem]">
+              <DialogContent className="rounded-[2.5rem] w-full sm:max-w-xl">
                 <DialogHeader>
                   <DialogTitle>{editingSale ? "Редактировать продажу" : "Новая продажа"}</DialogTitle>
                   <DialogDescription className="text-muted-foreground">
@@ -2250,7 +2456,7 @@ export default function AdminPage() {
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label>Количество</Label>
                       <NumericInput value={saleDraft.qty} onValueChange={(value) => setSaleDraft({ ...saleDraft, qty: value })} className="h-12 rounded-xl" />
@@ -2281,6 +2487,7 @@ export default function AdminPage() {
           <TabsContent value="users">
             <motion.div {...tabMotion} className="space-y-8">
             <Card className="rounded-[2.5rem] border-white/20 shadow-2xl overflow-hidden bg-background/40 backdrop-blur-xl">
+              <div className="hidden md:block">
               <Table>
                 <TableHeader className="bg-muted/50">
                   <TableRow>
@@ -2328,9 +2535,41 @@ export default function AdminPage() {
                   )}
                 </TableBody>
               </Table>
+              </div>
+              <div className="md:hidden px-4 pb-4 space-y-4">
+                {filteredUsers.length === 0 ? (
+                  <div className="text-center text-muted-foreground py-8">Клиенты не найдены</div>
+                ) : (
+                  filteredUsers.map(userItem => (
+                    <Card key={userItem.uid} className="rounded-2xl border-white/15 bg-background/60 shadow-lg">
+                      <CardContent className="p-4 space-y-3">
+                        <div>
+                          <div className="text-sm font-black">{userItem.name || "Без имени"}</div>
+                          <div className="text-xs text-muted-foreground">{userItem.email || "—"}</div>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge className={userItem.loyaltyDiscount > 0 ? "bg-emerald-500/10 text-emerald-500 border-none" : "bg-muted text-muted-foreground border-none"}>
+                            {userItem.loyaltyDiscount > 0 ? `VIP ${userItem.loyaltyDiscount}%` : "VIP0"}
+                          </Badge>
+                          <span className="text-xs text-muted-foreground">Заказов: <b>{userItem.purchasesCount || 0}</b></span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <div className="text-xs text-muted-foreground">{userItem.phone || "—"}</div>
+                          <div className="text-base font-black text-primary">{(userItem.totalSpent || 0).toLocaleString()} ₽</div>
+                        </div>
+                        <div className="flex justify-end">
+                          <Button size="icon" variant="ghost" className="h-9 w-9 rounded-xl" onClick={() => openUserDialog(userItem)}>
+                            <Pencil className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))
+                )}
+              </div>
             </Card>
             <Dialog open={userDialogOpen} onOpenChange={setUserDialogOpen}>
-              <DialogContent className="rounded-[2rem] max-w-xl">
+              <DialogContent className="rounded-[2rem] w-full sm:max-w-xl">
                 <DialogHeader>
                   <DialogTitle>Управление клиентом</DialogTitle>
                   <DialogDescription className="text-muted-foreground">
@@ -2411,6 +2650,7 @@ export default function AdminPage() {
           <TabsContent value="reviews">
             <motion.div {...tabMotion} className="space-y-8">
             <Card className="rounded-[2.5rem] border-white/20 shadow-2xl overflow-hidden bg-background/40 backdrop-blur-xl">
+              <div className="hidden md:block">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -2462,9 +2702,54 @@ export default function AdminPage() {
                   )}
                 </TableBody>
               </Table>
+              </div>
+              <div className="md:hidden px-4 pb-4 space-y-4">
+                {filteredReviews.length === 0 ? (
+                  <div className="text-center text-muted-foreground py-8">Отзывов пока нет</div>
+                ) : (
+                  filteredReviews.map(r => (
+                    <Card key={r.id} className="rounded-2xl border-white/15 bg-background/60 shadow-lg">
+                      <CardContent className="p-4 space-y-3">
+                        <div>
+                          <div className="text-sm font-black">{r.userName || "Покупатель"}</div>
+                          <div className="text-[10px] text-muted-foreground">
+                            {formatTimestamp(r.createdAt, "ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" }) || "—"}
+                          </div>
+                        </div>
+                        <p className="text-sm italic leading-relaxed">«{r.text}»</p>
+                        <div className="flex items-center justify-between">
+                          <div className="flex text-orange-400">
+                            {[...Array(5)].map((_, i) => (
+                              <span key={i} className={i < r.rating ? "fill-current" : "opacity-20 text-muted-foreground"}>★</span>
+                            ))}
+                          </div>
+                          <div>
+                            {r.status === "pending" && <Badge className="bg-orange-500/10 text-orange-500 border-none">Ожидает</Badge>}
+                            {r.status === "approved" && <Badge className="bg-emerald-500/10 text-emerald-500 border-none">Опубликован</Badge>}
+                            {r.status === "rejected" && <Badge className="bg-red-500/10 text-red-500 border-none">Отклонен</Badge>}
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <Button size="sm" variant="outline" className="rounded-xl" onClick={() => openReviewDialog(r)}>
+                            <Pencil className="w-4 h-4 mr-2" /> Редактировать
+                          </Button>
+                          {r.status === "pending" && (
+                            <Button size="sm" variant="outline" className="rounded-xl text-emerald-500 border-emerald-500/20 hover:bg-emerald-500/10" onClick={() => handleReviewAction(r.id, "approve")}>
+                              <Check className="w-4 h-4 mr-2" /> Одобрить
+                            </Button>
+                          )}
+                          <Button size="sm" variant="outline" className="rounded-xl text-destructive border-destructive/20 hover:bg-destructive/10" onClick={() => handleReviewAction(r.id, "reject")}>
+                            <Trash2 className="w-4 h-4 mr-2" /> Отклонить
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))
+                )}
+              </div>
             </Card>
             <Dialog open={reviewDialogOpen} onOpenChange={setReviewDialogOpen}>
-              <DialogContent className="rounded-[2rem] max-w-2xl">
+              <DialogContent className="rounded-[2rem] w-full sm:max-w-2xl">
                 <DialogHeader>
                   <DialogTitle>Редактировать отзыв</DialogTitle>
                   <DialogDescription className="text-muted-foreground">
@@ -2489,7 +2774,7 @@ export default function AdminPage() {
                         className="rounded-xl min-h-[140px]"
                       />
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label>Рейтинг</Label>
                         <NumericInput
@@ -2536,7 +2821,7 @@ export default function AdminPage() {
                   {(["vip1", "vip2", "vip3"] as const).map((tier, index) => (
                     <div key={tier} className="space-y-4 p-4 rounded-2xl bg-muted/30 border">
                       <Label className="text-[10px] font-black uppercase">VIP {index + 1}: {settingsDraft.vipRules[tier].label}</Label>
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div className="space-y-1">
                           <span className="text-[10px] text-muted-foreground uppercase">Заказов от</span>
                           <NumericInput
@@ -2554,7 +2839,7 @@ export default function AdminPage() {
                           />
                         </div>
                       </div>
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div className="space-y-1">
                           <span className="text-[10px] text-muted-foreground uppercase">Скидка %</span>
                           <NumericInput

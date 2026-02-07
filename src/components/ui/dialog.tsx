@@ -76,7 +76,7 @@ function DialogContent({
           exit={{ opacity: 0, y: 12, scale: 0.98 }}
           transition={{ duration: 0.25, ease: "easeOut" }}
           className={cn(
-            "bg-background fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border p-6 shadow-lg sm:max-w-lg",
+            "bg-background fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-1.5rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border p-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] shadow-lg sm:max-w-lg sm:p-6 max-h-[calc(100svh-2rem)] overflow-y-auto",
             className
           )}
         >
@@ -111,7 +111,7 @@ function DialogFooter({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="dialog-footer"
       className={cn(
-        "flex flex-col-reverse gap-2 sm:flex-row sm:justify-end",
+        "flex flex-col gap-2 sm:flex-row sm:justify-end sm:items-center [&>*]:w-full sm:[&>*]:w-auto",
         className
       )}
       {...props}
