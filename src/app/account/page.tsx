@@ -82,11 +82,17 @@ export default function AccountPage() {
     items: [{ productId: "", quantity: 1 }],
   });
 
-  const tabMotion = {
-    initial: reduceMotion ? false : { opacity: 0, y: 16 },
-    animate: { opacity: 1, y: 0 },
-    transition: reduceMotion ? { duration: 0 } : { duration: 0.35, ease: "easeOut" },
-  };
+  const tabMotion = reduceMotion
+    ? {
+        initial: false,
+        animate: { opacity: 1, y: 0 },
+        transition: { duration: 0 },
+      }
+    : {
+        initial: { opacity: 0, y: 16 },
+        animate: { opacity: 1, y: 0 },
+        transition: { duration: 0.35, ease: [0.16, 1, 0.3, 1] },
+      };
 
   const toDate = (value: unknown): Date | null => {
     if (!value) return null;
