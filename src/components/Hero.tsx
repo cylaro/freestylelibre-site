@@ -65,43 +65,43 @@ export function Hero() {
             Сенсоры мониторинга глюкозы FreeStyle Libre 2 RU/EU и 3 Plus
           </p>
           
-          <h1 className="text-5xl md:text-7xl font-extrabold leading-[1.1] mb-6 tracking-tight">
+          <h1 className="text-4xl sm:text-5xl md:text-7xl font-extrabold leading-[1.1] mb-6 tracking-tight">
             Свобода <br />
             <span className="bg-gradient-to-r from-primary via-blue-600 to-indigo-600 bg-clip-text text-transparent">
               без проколов
             </span>
           </h1>
           
-          <p className="text-xl text-muted-foreground mb-10 max-w-lg leading-relaxed">
+          <p className="text-lg sm:text-xl text-muted-foreground mb-10 max-w-lg leading-relaxed">
             Инновационные сенсоры FreeStyle Libre. 
             Точные измерения в реальном времени прямо на вашем смартфоне. 
             Жизнь без ограничений начинается здесь.
           </p>
           
-          <div className="flex flex-wrap gap-5">
-            <Button size="lg" className="h-14 px-10 text-lg rounded-2xl shadow-lg shadow-primary/25 hover:shadow-primary/40 transition-all duration-300 group" asChild>
+          <div className="flex flex-wrap gap-4 sm:gap-5">
+            <Button size="lg" className="h-12 sm:h-14 w-full sm:w-auto px-8 sm:px-10 text-base sm:text-lg rounded-2xl shadow-lg shadow-primary/25 hover:shadow-primary/40 transition-all duration-300 group" asChild>
               <a href="#catalog">
                 К каталогу
                 <ChevronRight className="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" />
               </a>
             </Button>
-            <Button size="lg" variant="outline" className="h-14 px-10 text-lg rounded-2xl border-2 hover:bg-muted transition-all duration-300" asChild>
+            <Button size="lg" variant="outline" className="h-12 sm:h-14 w-full sm:w-auto px-8 sm:px-10 text-base sm:text-lg rounded-2xl border-2 hover:bg-muted transition-all duration-300" asChild>
               <a href="#guide">Инструкция</a>
             </Button>
           </div>
 
-          <div className="mt-12 flex gap-8">
-            <div className="flex flex-col">
+          <div className="mt-10 grid grid-cols-3 gap-4 sm:flex sm:gap-8">
+            <div className="flex flex-col text-center sm:text-left">
               <span className="text-2xl font-bold">100%</span>
               <span className="text-sm text-muted-foreground font-medium uppercase tracking-wider">Оригинал</span>
             </div>
-            <div className="w-px h-10 bg-border self-center" />
-            <div className="flex flex-col">
+            <div className="hidden sm:block w-px h-10 bg-border self-center" />
+            <div className="flex flex-col text-center sm:text-left">
               <span className="text-2xl font-bold">24/7</span>
               <span className="text-sm text-muted-foreground font-medium uppercase tracking-wider">Поддержка</span>
             </div>
-            <div className="w-px h-10 bg-border self-center" />
-            <div className="flex flex-col">
+            <div className="hidden sm:block w-px h-10 bg-border self-center" />
+            <div className="flex flex-col text-center sm:text-left">
               <span className="text-2xl font-bold">1500+</span>
               <span className="text-sm text-muted-foreground font-medium uppercase tracking-wider">Клиентов</span>
             </div>
