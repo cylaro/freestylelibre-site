@@ -884,13 +884,15 @@ async function resolveProduct(env: Bindings, productId: string) {
   return { id: product.id, name: product.name || "Товар" };
 }
 
-function buildOrderSales(order: any, now: Date) {
+type OrderSaleEntry = { id: string; data: Record<string, any> };
+
+function buildOrderSales(order: any, now: Date): OrderSaleEntry[] {
   const items = Array.isArray(order.items) ? order.items : [];
   const subtotal = items.reduce((sum: number, item: any) => sum + Number(item?.subtotal || 0), 0);
   const total = Number(order.totalPrice || 0);
   const ratio = subtotal > 0 ? total / subtotal : 1;
   let remaining = total;
-  return items.map((item: any, index: number) => {
+  return items.map((item: any, index: number): OrderSaleEntry => {
     const base = Number(item?.subtotal || 0) * ratio;
     const amount = index === items.length - 1 ? remaining : Math.round(base);
     remaining -= amount;
