@@ -233,14 +233,14 @@ export default function AdminPage() {
   const tabMotion = {
     initial: reduceMotion ? false : { opacity: 0, y: 18 },
     animate: { opacity: 1, y: 0 },
-    transition: reduceMotion ? { duration: 0 } : { duration: 0.35, ease: "easeOut" },
+    transition: reduceMotion ? { duration: 0 } : { duration: 0.35 },
   };
 
   const panelMotion = {
     initial: reduceMotion ? false : { opacity: 0, y: 12 },
     animate: { opacity: 1, y: 0 },
     exit: reduceMotion ? { opacity: 0 } : { opacity: 0, y: 8 },
-    transition: reduceMotion ? { duration: 0 } : { duration: 0.25, ease: "easeOut" },
+    transition: reduceMotion ? { duration: 0 } : { duration: 0.25 },
   };
 
   const workerUrl = process.env.NEXT_PUBLIC_WORKER_URL || "https://freestyle-store-worker.scheglovvrn.workers.dev";
