@@ -8,22 +8,7 @@ import {
 } from "firebase/auth";
 import { doc, onSnapshot } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
-
-export interface UserProfile {
-  uid: string;
-  email: string;
-  name: string;
-  phone: string;
-  phoneE164?: string;
-  telegram: string;
-  isAdmin: boolean;
-  isBanned: boolean;
-  banReason?: string;
-  totalOrders: number;
-  totalSpent: number;
-  loyaltyLevel: number; // 0, 1, 2, 3
-  loyaltyDiscount: number; // 0, 5, 7, 10
-}
+import { normalizeUser, UserProfile } from "@/lib/schemas";
 
 interface AuthContextType {
   user: FirebaseUser | null;
@@ -47,34 +32,47 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
-      setUser(user);
-      
-      if (user) {
-        // Use onSnapshot for real-time profile updates (e.g. if admin bans user)
-        const unsubscribeProfile = onSnapshot(doc(db, "users", user.uid), (userDoc) => {
-          if (userDoc.exists()) {
-            setProfile(userDoc.data() as UserProfile);
-          } else {
-            // Profile will be created by Worker upon first interaction if needed,
-            // or we can keep the local creation but only for non-sensitive fields.
-            // However, per requirements, we trust the database state.
-            setProfile(null);
-          }
-          setLoading(false);
-        }, (error) => {
-          console.error("Error listening to profile:", error);
-          setLoading(false);
-        });
+    let unsubscribeProfile: (() => void) | null = null;
+    const unsubscribeAuth = onAuthStateChanged(auth, (nextUser) => {
+      setUser(nextUser);
 
-        return () => unsubscribeProfile();
-      } else {
-        setProfile(null);
-        setLoading(false);
+      if (unsubscribeProfile) {
+        unsubscribeProfile();
+        unsubscribeProfile = null;
       }
+
+      if (nextUser) {
+        setLoading(true);
+        // Use onSnapshot for real-time profile updates (e.g. if admin bans user)
+        unsubscribeProfile = onSnapshot(
+          doc(db, "users", nextUser.uid),
+          (userDoc) => {
+            if (userDoc.exists()) {
+              setProfile(normalizeUser(userDoc.data(), { uid: nextUser.uid, email: nextUser.email ?? "" }));
+            } else {
+              // Profile will be created by Worker upon first interaction if needed,
+              // or we can keep the local creation but only for non-sensitive fields.
+              // However, per requirements, we trust the database state.
+              setProfile(null);
+            }
+            setLoading(false);
+          },
+          (error) => {
+            console.error("Error listening to profile:", error);
+            setLoading(false);
+          }
+        );
+        return;
+      }
+
+      setProfile(null);
+      setLoading(false);
     });
 
-    return () => unsubscribeAuth();
+    return () => {
+      if (unsubscribeProfile) unsubscribeProfile();
+      unsubscribeAuth();
+    };
   }, []);
 
   const logout = async () => {

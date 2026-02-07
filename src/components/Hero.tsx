@@ -1,17 +1,42 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { motion, useScroll, useTransform } from "framer-motion";
-import { ChevronRight, Zap, ShieldCheck, HeartPulse } from "lucide-react";
+import { ChevronRight, Zap } from "lucide-react";
+import { db } from "@/lib/firebase";
+import { doc, getDoc } from "firebase/firestore";
+import { normalizeSettings, settingsDefaults } from "@/lib/schemas";
+import Image from "next/image";
 
 export function Hero() {
   const { scrollY } = useScroll();
   const y1 = useTransform(scrollY, [0, 500], [0, 200]);
   const opacity = useTransform(scrollY, [0, 300], [1, 0]);
+  const [heroImageUrl, setHeroImageUrl] = useState(settingsDefaults.media.heroImageUrl);
+
+  useEffect(() => {
+    let active = true;
+    const loadSettings = async () => {
+      try {
+        const settingsDoc = await getDoc(doc(db, "settings", "config"));
+        if (!active) return;
+        if (settingsDoc.exists()) {
+          const settings = normalizeSettings(settingsDoc.data());
+          setHeroImageUrl(settings.media.heroImageUrl || settingsDefaults.media.heroImageUrl);
+        }
+      } catch (error) {
+        console.error("Failed to load settings", error);
+      }
+    };
+    loadSettings();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   return (
-    <section className="relative min-h-[90vh] flex items-center pt-20 overflow-hidden bg-background">
+    <section className="relative min-h-[90vh] flex items-center pt-20 overflow-hidden">
       {/* Dynamic Background */}
       <motion.div 
         style={{ y: y1, opacity }}
@@ -19,7 +44,7 @@ export function Hero() {
       />
       <div className="absolute top-20 left-10 -z-10 w-72 h-72 bg-blue-400/10 rounded-full blur-3xl animate-pulse" />
       
-      <div className="container mx-auto px-4 grid lg:grid-cols-2 gap-16 items-center">
+      <div className="container grid lg:grid-cols-2 gap-16 items-center">
         <motion.div
           initial={{ opacity: 0, x: -30 }}
           animate={{ opacity: 1, x: 0 }}
@@ -35,6 +60,10 @@ export function Hero() {
             <Zap className="w-4 h-4 fill-primary" />
             <span>Новое поступление Libre 3 Plus</span>
           </motion.div>
+
+          <p className="text-sm font-semibold text-muted-foreground mb-3">
+            Сенсоры мониторинга глюкозы FreeStyle Libre 2 RU/EU и 3 Plus
+          </p>
           
           <h1 className="text-5xl md:text-7xl font-extrabold leading-[1.1] mb-6 tracking-tight">
             Свобода <br />
@@ -86,42 +115,18 @@ export function Hero() {
           className="relative group"
         >
           <div className="relative z-10 aspect-[4/5] md:aspect-square rounded-[2.5rem] overflow-hidden shadow-[0_32px_64px_-16px_rgba(0,0,0,0.2)] dark:shadow-[0_32px_64px_-16px_rgba(0,0,0,0.6)] border border-white/20">
-            <img 
-              src="https://images.unsplash.com/photo-1631549916768-4119b295f78b?auto=format&fit=crop&q=80&w=1000" 
+            <Image
+              src={heroImageUrl || settingsDefaults.media.heroImageUrl}
               alt="FreeStyle Libre Monitoring"
-              className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+              fill
+              priority
+              sizes="(max-width: 1024px) 100vw, 50vw"
+              className="object-cover transition-transform duration-700 group-hover:scale-105"
             />
             <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
           </div>
 
-          {/* Floating Cards */}
-          <motion.div 
-            animate={{ y: [0, -10, 0] }}
-            transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-            className="absolute -top-8 -right-8 bg-background/80 backdrop-blur-xl p-5 rounded-3xl shadow-2xl border border-white/20 z-20 flex items-center gap-4"
-          >
-            <div className="w-12 h-12 rounded-2xl bg-primary/20 flex items-center justify-center text-primary">
-              <ShieldCheck className="w-7 h-7" />
-            </div>
-            <div>
-              <p className="font-bold text-lg">Гарантия</p>
-              <p className="text-sm text-muted-foreground">На каждый сенсор</p>
-            </div>
-          </motion.div>
-
-          <motion.div 
-            animate={{ y: [0, 10, 0] }}
-            transition={{ duration: 5, repeat: Infinity, ease: "easeInOut", delay: 1 }}
-            className="absolute -bottom-10 -left-10 bg-background/80 backdrop-blur-xl p-6 rounded-3xl shadow-2xl border border-white/20 z-20 hidden md:flex items-center gap-5"
-          >
-            <div className="w-14 h-14 rounded-full bg-red-500/10 flex items-center justify-center text-red-500 animate-pulse">
-              <HeartPulse className="w-8 h-8" />
-            </div>
-            <div>
-              <p className="font-bold text-xl">15 дней</p>
-              <p className="text-sm text-muted-foreground">Непрерывной работы</p>
-            </div>
-          </motion.div>
+          {/* Floating Cards removed per requirements */}
         </motion.div>
       </div>
     </section>

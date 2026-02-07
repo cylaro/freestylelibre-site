@@ -13,8 +13,11 @@ interface AuthLayoutProps {
 
 export function AuthLayout({ children, title, subtitle }: AuthLayoutProps) {
   return (
-    <div className="min-h-screen w-full flex items-center justify-center p-4 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/10 via-background to-background">
-      <div className="absolute inset-0 w-full h-full bg-[url('/grid.svg')] bg-center [mask-image:linear-gradient(180deg,white,rgba(255,255,255,0))]" />
+    <div
+      className="min-h-screen w-full flex items-center justify-center p-4 relative overflow-hidden"
+      style={{ background: "var(--page-bg)" }}
+    >
+      <div className="absolute inset-0 w-full h-full bg-[url('/grid.svg')] bg-center opacity-40 [mask-image:linear-gradient(180deg,white,rgba(255,255,255,0))]" />
       
       <motion.div
         initial={{ opacity: 0, y: 20 }}

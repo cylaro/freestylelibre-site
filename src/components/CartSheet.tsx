@@ -1,17 +1,14 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useCart } from "@/contexts/CartContext";
 import { useAuth } from "@/contexts/AuthContext";
-import { 
-  Dialog, 
-  DialogContent, 
-  DialogHeader, 
-  DialogTitle 
-} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { 
   Plus, 
   Minus, 
@@ -28,17 +25,37 @@ import { db } from "@/lib/firebase";
 import { doc, getDoc } from "firebase/firestore";
 import { toast } from "sonner";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useAnimation, useReducedMotion } from "framer-motion";
+import { useRouter } from "next/navigation";
+import { normalizeSettings, settingsDefaults, OrderFormField } from "@/lib/schemas";
+import Image from "next/image";
+
+type CheckoutFormData = {
+  deliveryMethod: "pickup" | "delivery";
+  deliveryService?: string;
+  name?: string;
+  phone?: string;
+  telegram?: string;
+  city?: string;
+  [key: string]: string | undefined;
+};
 
 export function CartSheet() {
   const { items, removeItem, updateQuantity, totalPrice, discountedTotal, clearCart, itemCount } = useCart();
   const { user, profile } = useAuth();
+  const router = useRouter();
+  const reduceMotion = useReducedMotion();
+  const cartControls = useAnimation();
+  const hasMounted = useRef(false);
   
   const [isOpen, setIsOpen] = useState(false);
   const [step, setStep] = useState(1); // 1: Cart, 2: Checkout Form
   const [loading, setLoading] = useState(false);
-  const [formFields, setFormFields] = useState<any[]>([]);
-  const [formData, setFormData] = useState<any>({
+  const [formFields, setFormFields] = useState<OrderFormField[]>([]);
+  const [deliveryServices, setDeliveryServices] = useState(settingsDefaults.deliveryServices);
+  const [guestPromptOpen, setGuestPromptOpen] = useState(false);
+  const [guestOrderId, setGuestOrderId] = useState<string | null>(null);
+  const [formData, setFormData] = useState<CheckoutFormData>({
     deliveryMethod: "pickup"
   });
 
@@ -46,14 +63,26 @@ export function CartSheet() {
     const loadSettings = async () => {
       try {
         const settingsDoc = await getDoc(doc(db, "settings", "config"));
+        const reservedIds = new Set(["telegram", "phone", "name", "deliveryMethod", "deliveryService", "city"]);
         if (settingsDoc.exists()) {
-          const fields = settingsDoc.data().orderFormFields || [];
+          const settings = normalizeSettings(settingsDoc.data());
+          const fields = (settings.orderForm.fields || []).filter(field => !reservedIds.has(field.id));
           setFormFields(fields);
+          const services = (settings.deliveryServices || []).filter(service => service.active);
+          setDeliveryServices(services);
+          setFormData(prev => ({
+            ...prev,
+            deliveryService: prev.deliveryService || services[0]?.id || "",
+          }));
         } else {
-          setFormFields([
-            { id: "telegram", label: "Ваш Telegram", type: "text", required: false, placeholder: "@username" },
-            { id: "comment", label: "Комментарий", type: "text", required: false, placeholder: "Особые пожелания" },
-          ]);
+          const fields = (settingsDefaults.orderForm.fields || []).filter(field => !reservedIds.has(field.id));
+          setFormFields(fields);
+          const services = (settingsDefaults.deliveryServices || []).filter(service => service.active);
+          setDeliveryServices(services);
+          setFormData(prev => ({
+            ...prev,
+            deliveryService: prev.deliveryService || services[0]?.id || "",
+          }));
         }
       } catch (e) {
         console.error("Error loading settings", e);
@@ -73,6 +102,52 @@ export function CartSheet() {
     }
   }, [profile]);
 
+  useEffect(() => {
+    if (profile) return;
+    try {
+      const stored = localStorage.getItem("guestOrderProfile");
+      if (!stored) return;
+      const parsed = JSON.parse(stored) as { name?: string; phone?: string; telegram?: string };
+      setFormData(prev => ({
+        ...prev,
+        name: parsed?.name || prev.name || "",
+        phone: parsed?.phone || prev.phone || "",
+        telegram: parsed?.telegram || prev.telegram || "",
+      }));
+    } catch {
+      // ignore invalid cache
+    }
+  }, [profile]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const originalOverflow = document.body.style.overflow;
+    const originalPadding = document.body.style.paddingRight;
+    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+    document.body.style.overflow = "hidden";
+    if (scrollbarWidth > 0) {
+      document.body.style.paddingRight = `${scrollbarWidth}px`;
+    }
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      document.body.style.paddingRight = originalPadding;
+    };
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!hasMounted.current) {
+      hasMounted.current = true;
+      return;
+    }
+    if (reduceMotion) return;
+    if (itemCount > 0) {
+      cartControls.start({
+        scale: [1, 1.08, 1],
+        transition: { duration: 0.35, ease: "easeOut" },
+      });
+    }
+  }, [itemCount, cartControls, reduceMotion]);
+
   const normalizePhone = (phone: string) => {
     let cleaned = phone.replace(/\D/g, "");
     if (cleaned.startsWith("8")) cleaned = "7" + cleaned.substring(1);
@@ -80,12 +155,17 @@ export function CartSheet() {
     return "+" + cleaned;
   };
 
+  const handleClose = () => {
+    setIsOpen(false);
+    setStep(1);
+  };
+
+  const handleContinue = () => {
+    setStep(2);
+  };
+
   const handleCheckout = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) {
-      toast.error("Пожалуйста, войдите, чтобы оформить заказ");
-      return;
-    }
 
     const phone = normalizePhone(formData.phone || "");
     if (phone.length < 11) {
@@ -93,16 +173,30 @@ export function CartSheet() {
       return;
     }
 
+    if (formData.deliveryMethod === "delivery") {
+      if (!formData.city || !formData.deliveryService) {
+        toast.error("Укажите город и службу доставки");
+        return;
+      }
+    }
+
     setLoading(true);
     try {
-      const idToken = await user.getIdToken();
+      const idToken = user ? await user.getIdToken() : null;
       const workerUrl = process.env.NEXT_PUBLIC_WORKER_URL || "https://freestyle-store-worker.scheglovvrn.workers.dev";
+      const customFields: Record<string, string> = {};
+      for (const field of formFields) {
+        customFields[field.id] = formData[field.id] || "";
+      }
       
+      const nonce = typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : Date.now().toString();
       const response = await fetch(`${workerUrl}/api/order/create`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${idToken}`
+          ...(idToken ? { "Authorization": `Bearer ${idToken}` } : {})
         },
         body: JSON.stringify({
           items: items.map(item => ({
@@ -111,23 +205,46 @@ export function CartSheet() {
             quantity: item.quantity
           })),
           customerInfo: {
-            ...formData,
+            name: formData.name || "",
             phone,
-            totalPrice: discountedTotal
+            telegram: formData.telegram || "",
+            deliveryMethod: formData.deliveryMethod || "pickup",
+            deliveryService: formData.deliveryService || "",
+            city: formData.city || "",
+            customFields
           },
-          nonce: Date.now().toString()
+          nonce
         })
       });
 
-      if (!response.ok) throw new Error("Worker request failed");
+      const result = await response.json().catch(() => ({})) as { error?: string; orderId?: string };
+      if (!response.ok) {
+        throw new Error(result.error || "Ошибка оформления заказа");
+      }
 
       toast.success("Заказ успешно оформлен! Мы свяжемся с вами в ближайшее время.");
+      if (!user) {
+        const guestProfile = {
+          name: formData.name || "",
+          phone,
+          telegram: formData.telegram || "",
+        };
+        try {
+          localStorage.setItem("guestOrderProfile", JSON.stringify(guestProfile));
+          if (result.orderId) {
+            localStorage.setItem("guestOrderId", result.orderId);
+            setGuestOrderId(result.orderId);
+          }
+        } catch {
+          // ignore storage errors
+        }
+        setGuestPromptOpen(true);
+      }
       clearCart();
-      setIsOpen(false);
-      setStep(1);
+      handleClose();
     } catch (error) {
-      console.error(error);
-      toast.error("Ошибка при оформлении заказа. Попробуйте позже.");
+      const message = error instanceof Error ? error.message : "Ошибка при оформлении заказа. Попробуйте позже.";
+      toast.error(message);
     } finally {
       setLoading(false);
     }
@@ -136,10 +253,10 @@ export function CartSheet() {
   return (
     <>
       <motion.div
-        initial={{ scale: 0, opacity: 0 }}
+        initial={reduceMotion ? false : { scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
-        whileHover={{ scale: 1.1 }}
-        whileTap={{ scale: 0.9 }}
+        whileHover={reduceMotion ? undefined : { scale: 1.06 }}
+        whileTap={reduceMotion ? undefined : { scale: 0.98 }}
         className="fixed bottom-8 right-8 z-40"
       >
         <Button 
@@ -147,7 +264,9 @@ export function CartSheet() {
           className="h-16 w-16 rounded-full shadow-[0_20px_40px_rgba(0,0,0,0.2)] bg-primary hover:bg-primary/90 transition-all"
           onClick={() => setIsOpen(true)}
         >
-          <ShoppingCart className="h-7 w-7" />
+          <motion.div animate={cartControls}>
+            <ShoppingCart className="h-7 w-7" />
+          </motion.div>
           {itemCount > 0 && (
             <motion.span 
               initial={{ scale: 0 }}
@@ -160,22 +279,28 @@ export function CartSheet() {
         </Button>
       </motion.div>
 
-      {isOpen && (
-        <div className="fixed inset-0 z-50 flex justify-end">
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm" 
-            onClick={() => setIsOpen(false)} 
-          />
-          <motion.div 
-            initial={{ x: "100%" }}
-            animate={{ x: 0 }}
-            exit={{ x: "100%" }}
-            transition={{ type: "spring", damping: 25, stiffness: 200 }}
-            className="relative w-full max-w-lg bg-background h-full shadow-2xl flex flex-col border-l border-white/10"
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            className="fixed inset-0 z-50 flex justify-end"
+            initial={reduceMotion ? false : { opacity: 0 }}
+            animate={reduceMotion ? undefined : { opacity: 1 }}
+            exit={reduceMotion ? undefined : { opacity: 0 }}
           >
+            <motion.div 
+              initial={reduceMotion ? false : { opacity: 0 }}
+              animate={reduceMotion ? undefined : { opacity: 1 }}
+              exit={reduceMotion ? undefined : { opacity: 0 }}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm" 
+              onClick={handleClose} 
+            />
+            <motion.div 
+              initial={reduceMotion ? false : { x: "100%" }}
+              animate={reduceMotion ? undefined : { x: 0 }}
+              exit={reduceMotion ? undefined : { x: "100%" }}
+              transition={{ type: "spring", damping: 26, stiffness: 220 }}
+              className="relative w-full max-w-lg bg-background/90 backdrop-blur-xl h-[100dvh] shadow-2xl flex flex-col border-l border-white/10"
+            >
             <div className="p-6 border-b flex items-center justify-between bg-muted/30">
               <div className="flex items-center gap-3">
                 {step === 2 && (
@@ -187,10 +312,10 @@ export function CartSheet() {
                   {step === 1 ? "Корзина" : "Оформление"}
                 </h2>
               </div>
-              <Button variant="ghost" size="icon" onClick={() => setIsOpen(false)} className="rounded-full"><X className="h-5 w-5" /></Button>
+              <Button variant="ghost" size="icon" onClick={handleClose} className="rounded-full"><X className="h-5 w-5" /></Button>
             </div>
 
-            <ScrollArea className="flex-1">
+            <ScrollArea className="flex-1 min-h-0">
               <div className="p-6">
                 <AnimatePresence mode="wait">
                   {step === 1 ? (
@@ -207,7 +332,7 @@ export function CartSheet() {
                             <ShoppingCart className="h-10 w-10 opacity-20" />
                           </div>
                           <p className="text-lg font-medium">Ваша корзина пуста</p>
-                          <Button variant="link" onClick={() => setIsOpen(false)} className="mt-2 text-primary">Перейти к покупкам</Button>
+                          <Button variant="link" onClick={handleClose} className="mt-2 text-primary">Перейти к покупкам</Button>
                         </div>
                       ) : (
                         <div className="space-y-6">
@@ -218,7 +343,13 @@ export function CartSheet() {
                               className="flex gap-5 p-4 rounded-[1.5rem] bg-muted/30 border border-white/5 group relative overflow-hidden"
                             >
                               <div className="h-24 w-24 rounded-2xl overflow-hidden border bg-background shrink-0 shadow-sm">
-                                <img src={item.imageUrl} alt={item.name} className="h-full w-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                                <Image
+                                  src={item.imageUrl}
+                                  alt={item.name}
+                                  width={96}
+                                  height={96}
+                                  className="h-full w-full object-cover group-hover:scale-110 transition-transform duration-500"
+                                />
                               </div>
                               <div className="flex-1 flex flex-col justify-between">
                                 <div>
@@ -244,6 +375,11 @@ export function CartSheet() {
                               </div>
                             </motion.div>
                           ))}
+                          <div className="pt-2">
+                            <Button variant="ghost" className="w-full rounded-2xl text-destructive hover:bg-destructive/10" onClick={clearCart}>
+                              Очистить корзину
+                            </Button>
+                          </div>
                         </div>
                       )}
                     </motion.div>
@@ -256,6 +392,22 @@ export function CartSheet() {
                       className="space-y-8"
                     >
                       <div className="space-y-6">
+                        {!user && (
+                          <div className="rounded-2xl border border-white/10 bg-primary/5 p-4 text-sm space-y-3">
+                            <p className="font-bold">Можно оформить заказ без регистрации</p>
+                            <p className="text-muted-foreground">
+                              Аккаунт даст историю заказов, статус доставки и персональные скидки.
+                            </p>
+                            <div className="flex flex-wrap gap-2">
+                              <Button variant="outline" className="rounded-xl" onClick={() => router.push("/login?redirect=/account")}>
+                                Войти
+                              </Button>
+                              <Button className="rounded-xl" onClick={() => router.push("/register?redirect=/account")}>
+                                Создать аккаунт
+                              </Button>
+                            </div>
+                          </div>
+                        )}
                         <div className="space-y-4">
                           <Label className="text-base font-bold flex items-center gap-2">
                             <Truck className="w-5 h-5 text-primary" />
@@ -270,11 +422,15 @@ export function CartSheet() {
                               <p className="text-[10px] text-muted-foreground mt-1">г. Воронеж</p>
                             </button>
                             <button
-                              onClick={() => setFormData({...formData, deliveryMethod: "cdek"})}
-                              className={`p-4 rounded-2xl border-2 transition-all text-left ${formData.deliveryMethod === "cdek" ? "border-primary bg-primary/5 shadow-md" : "border-muted hover:border-muted-foreground/30"}`}
+                              onClick={() => setFormData({...formData, deliveryMethod: "delivery"})}
+                              className={`p-4 rounded-2xl border-2 transition-all text-left ${formData.deliveryMethod === "delivery" ? "border-primary bg-primary/5 shadow-md" : "border-muted hover:border-muted-foreground/30"}`}
                             >
-                              <p className="font-bold text-sm">СДЭК</p>
-                              <p className="text-[10px] text-muted-foreground mt-1">По всей России</p>
+                              <p className="font-bold text-sm">Доставка</p>
+                              <p className="text-[10px] text-muted-foreground mt-1">
+                                {deliveryServices.length > 0
+                                  ? deliveryServices.map(service => service.label).join(", ")
+                                  : "По всей России"}
+                              </p>
                             </button>
                           </div>
                         </div>
@@ -308,32 +464,88 @@ export function CartSheet() {
                                 required
                               />
                             </div>
-                            {formData.deliveryMethod === "cdek" && (
-                              <div className="space-y-2">
-                                <Label htmlFor="address" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground ml-1">Адрес / ПВЗ СДЭК</Label>
-                                <Input 
-                                  id="address" 
-                                  placeholder="Город, улица, дом или ПВЗ" 
-                                  className="h-12 rounded-xl bg-muted/30 border-white/10"
-                                  value={formData.address || ""} 
-                                  onChange={(e) => setFormData({...formData, address: e.target.value})} 
-                                  required
-                                />
-                              </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="telegram" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground ml-1">Telegram username</Label>
+                              <Input 
+                                id="telegram" 
+                                placeholder="@username" 
+                                className="h-12 rounded-xl bg-muted/30 border-white/10"
+                                value={formData.telegram || ""} 
+                                onChange={(e) => setFormData({...formData, telegram: e.target.value})} 
+                              />
+                            </div>
+                            {formData.deliveryMethod === "delivery" && (
+                              <>
+                                <div className="space-y-2">
+                              <Label htmlFor="deliveryService" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground ml-1">Служба доставки</Label>
+                                  <Select
+                                    value={formData.deliveryService || undefined}
+                                    onValueChange={(value) => setFormData({ ...formData, deliveryService: value })}
+                                  >
+                                    <SelectTrigger className="h-12 w-full rounded-xl bg-muted/30 border-white/10">
+                                      <SelectValue placeholder="Выберите службу" />
+                                    </SelectTrigger>
+                                    <SelectContent className="rounded-2xl border-white/10 bg-background/80 backdrop-blur-xl shadow-2xl">
+                                      {deliveryServices.map(service => (
+                                        <SelectItem key={service.id} value={service.id}>{service.label}</SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div className="space-y-2">
+                                  <Label htmlFor="city" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground ml-1">Город</Label>
+                                  <Input 
+                                    id="city" 
+                                    placeholder="Например, Москва" 
+                                    className="h-12 rounded-xl bg-muted/30 border-white/10"
+                                    value={formData.city || ""} 
+                                    onChange={(e) => setFormData({...formData, city: e.target.value})} 
+                                    required
+                                  />
+                                </div>
+                              </>
                             )}
-                            {formFields.map(field => (
-                              <div key={field.id} className="space-y-2">
-                                <Label htmlFor={field.id} className="text-xs font-semibold uppercase tracking-wider text-muted-foreground ml-1">{field.label}</Label>
-                                <Input 
-                                  id={field.id} 
-                                  placeholder={field.placeholder}
-                                  className="h-12 rounded-xl bg-muted/30 border-white/10"
-                                  value={formData[field.id] || ""} 
-                                  onChange={(e) => setFormData({...formData, [field.id]: e.target.value})} 
-                                  required={field.required}
-                                />
-                              </div>
-                            ))}
+                            {formFields.map(field => {
+                              const fieldType =
+                                field.type === "textarea"
+                                  ? "textarea"
+                                  : field.type === "datetime-local"
+                                  ? "datetime-local"
+                                  : field.type === "date"
+                                  ? "date"
+                                  : field.type === "time"
+                                  ? "time"
+                                  : field.type === "number"
+                                  ? "text"
+                                  : "text";
+                              const isNumericField = field.type === "number";
+                              return (
+                                <div key={field.id} className="space-y-2">
+                                  <Label htmlFor={field.id} className="text-xs font-semibold uppercase tracking-wider text-muted-foreground ml-1">{field.label}</Label>
+                                  {fieldType === "textarea" ? (
+                                    <Textarea
+                                      id={field.id}
+                                      placeholder={field.placeholder}
+                                      className="rounded-xl bg-muted/30 border-white/10 min-h-[110px]"
+                                      value={formData[field.id] || ""}
+                                      onChange={(e) => setFormData({ ...formData, [field.id]: e.target.value })}
+                                      required={field.required}
+                                    />
+                                  ) : (
+                                    <Input 
+                                      id={field.id} 
+                                      type={fieldType}
+                                      inputMode={isNumericField ? "numeric" : undefined}
+                                      placeholder={field.placeholder}
+                                      className="h-12 rounded-xl bg-muted/30 border-white/10"
+                                      value={formData[field.id] || ""} 
+                                      onChange={(e) => setFormData({ ...formData, [field.id]: e.target.value })} 
+                                      required={field.required}
+                                    />
+                                  )}
+                                </div>
+                              );
+                            })}
                           </div>
                         </div>
                       </div>
@@ -349,9 +561,9 @@ export function CartSheet() {
                   <span className="text-muted-foreground">Промежуточный итог</span>
                   <span>{totalPrice} ₽</span>
                 </div>
-                {profile?.loyaltyDiscount > 0 && (
+                {(profile?.loyaltyDiscount ?? 0) > 0 && (
                   <div className="flex justify-between text-sm font-bold text-green-500 bg-green-500/10 p-2 rounded-xl">
-                    <span>Ваша VIP скидка ({profile.loyaltyDiscount}%)</span>
+                    <span>Ваша VIP скидка ({profile?.loyaltyDiscount ?? 0}%)</span>
                     <span>-{totalPrice - discountedTotal} ₽</span>
                   </div>
                 )}
@@ -365,16 +577,16 @@ export function CartSheet() {
                 <Button 
                   className="w-full h-16 rounded-2xl text-lg font-bold shadow-xl shadow-primary/20 hover:shadow-primary/40 transition-all duration-300 group" 
                   disabled={items.length === 0}
-                  onClick={() => setStep(2)}
+                  onClick={handleContinue}
                 >
                   Продолжить
                   <ChevronRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
                 </Button>
               ) : (
-                <Button 
+                <Button
                   onClick={handleCheckout}
-                  className="w-full h-16 rounded-2xl text-lg font-bold shadow-xl shadow-primary/20 hover:shadow-primary/40 transition-all duration-300 disabled:opacity-50" 
-                  disabled={loading || !user}
+                  className="w-full h-16 rounded-2xl text-lg font-bold shadow-xl shadow-primary/20 hover:shadow-primary/40 transition-all duration-300 disabled:opacity-50"
+                  disabled={loading}
                 >
                   {loading ? (
                     <div className="flex items-center gap-3">
@@ -389,15 +601,38 @@ export function CartSheet() {
                   )}
                 </Button>
               )}
-              {!user && step === 2 && (
-                <p className="text-center text-xs text-destructive font-bold mt-4">
-                  Необходимо войти в аккаунт
-                </p>
-              )}
             </div>
           </motion.div>
-        </div>
-      )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <Dialog open={guestPromptOpen} onOpenChange={setGuestPromptOpen}>
+        <DialogContent className="rounded-[2rem] max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-2xl font-black">Заказ оформлен</DialogTitle>
+            <DialogDescription className="text-muted-foreground">
+              Зарегистрируйтесь, чтобы отслеживать статус и видеть историю покупок.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 text-sm">
+            {guestOrderId && (
+              <div className="rounded-2xl border bg-muted/30 px-4 py-3 font-semibold">
+                Номер заказа: #{guestOrderId.slice(-6).toUpperCase()}
+              </div>
+            )}
+            <ul className="list-disc pl-5 text-muted-foreground space-y-1">
+              <li>История заказов и статусы доставки</li>
+              <li>Автозаполнение контактных данных</li>
+              <li>VIP скидки и персональные предложения</li>
+            </ul>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setGuestPromptOpen(false)}>Позже</Button>
+            <Button onClick={() => router.push("/register?redirect=/account")}>Создать аккаунт</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

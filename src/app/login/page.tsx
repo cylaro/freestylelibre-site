@@ -1,6 +1,7 @@
 import { AuthLayout } from "@/components/auth/AuthLayout";
 import { LoginForm } from "@/components/auth/LoginForm";
 import { Metadata } from "next";
+import { Suspense } from "react";
 
 export const metadata: Metadata = {
   title: "Вход | FreeStyle Store",
@@ -13,7 +14,9 @@ export default function LoginPage() {
       title="С возвращением" 
       subtitle="Войдите в свой аккаунт, чтобы продолжить"
     >
-      <LoginForm />
+      <Suspense fallback={<div className="text-center text-muted-foreground">Загрузка формы...</div>}>
+        <LoginForm />
+      </Suspense>
     </AuthLayout>
   );
 }

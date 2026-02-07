@@ -1,26 +1,59 @@
 # Настройка Cloudflare Worker
 
-Cloudflare Worker используется для безопасной обработки заказов и отправки уведомлений в Telegram.
+Worker отвечает за безопасное создание заказов, админ-действия и Telegram.
 
-### 1. Подготовка Telegram Бота
-1.  Найдите [@BotFather](https://t.me/botfather) в Telegram.
-2.  Создайте нового бота (`/newbot`) и получите **API Token**.
-3.  Напишите что-нибудь своему боту.
-4.  Узнайте свой **Chat ID** (через [@userinfobot](https://t.me/userinfobot) или вызвав `https://api.telegram.org/bot<TOKEN>/getUpdates`).
+## 1) Подготовка Telegram
+1. Создайте бота у **@BotFather** → получите **Bot API Token**.
+2. Напишите что-нибудь боту.
+3. Узнайте свой **Chat ID** через **@userinfobot**.
 
-### 2. Деплой Воркера
-1.  Перейдите в папку `worker/` вашего проекта.
-2.  Установите Wrangler: `npm install -g wrangler`.
-3.  Авторизуйтесь: `wrangler login`.
-4.  Опубликуйте воркер: `wrangler deploy`.
+## 2) Подготовка Worker (wrangler)
+1. Перейдите в папку `worker/`.
+2. Установите Wrangler:
+   ```bash
+   npm install -g wrangler
+   ```
+3. Авторизуйтесь:
+   ```bash
+   wrangler login
+   ```
+4. Проверьте `wrangler.json` и замените `FIREBASE_PROJECT_ID` на ваш ID проекта.
+5. Добавьте `FIREBASE_WEB_API_KEY` (Web API Key из Firebase Console → Project settings → General).
 
-### 3. Настройка Секретов (Secrets)
-В консоли Cloudflare (или через терминал) добавьте необходимые секреты:
+Переменные окружения (vars):
+- `FIREBASE_PROJECT_ID`
+- `FIREBASE_WEB_API_KEY`
+
+## 3) Secrets (обязательно)
+Worker использует сервисный аккаунт Firebase и секреты Telegram.
 ```bash
+wrangler secret put FIREBASE_SERVICE_ACCOUNT
 wrangler secret put TELEGRAM_BOT_TOKEN
 wrangler secret put TELEGRAM_CHAT_ID
 ```
 
-### 4. Интеграция с Фронтендом
-После деплоя вы получите URL вида `https://freestyle-store-worker.ваше-имя.workers.dev`. 
-Вставьте этот URL в поле `NEXT_PUBLIC_WORKER_URL` вашего файла `.env.local`.
+Где взять `FIREBASE_SERVICE_ACCOUNT`:
+- Firebase Console → **Project settings → Service accounts → Generate new private key**.
+- Скопируйте весь JSON в одну строку и вставьте в `wrangler secret put FIREBASE_SERVICE_ACCOUNT`.
+
+## 4) Деплой
+```bash
+wrangler deploy
+```
+После деплоя получите URL воркера вида:
+```
+https://freestyle-store-worker.<your>.workers.dev
+```
+
+## 5) Интеграция с фронтом
+Добавьте URL воркера в `.env.local`:
+```env
+NEXT_PUBLIC_WORKER_URL=https://freestyle-store-worker.<your>.workers.dev
+```
+
+## 6) Healthcheck
+Проверьте:
+```
+GET /api/health
+```
+Ответ должен быть `{ "status": "ok" }`.

@@ -2,7 +2,7 @@
 
 import React from "react";
 import { CheckCircle, Activity, Smartphone, Bell, Droplets, Heart } from "lucide-react";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 
 const advantages = [
   {
@@ -38,9 +38,17 @@ const advantages = [
 ];
 
 export function Advantages() {
+  const reduceMotion = useReducedMotion();
   return (
-    <section id="advantages" className="py-24 bg-muted/50">
-      <div className="container mx-auto px-4">
+    <motion.section
+      id="advantages"
+      className="py-24"
+      initial={reduceMotion ? false : { opacity: 0, y: 24 }}
+      whileInView={reduceMotion ? undefined : { opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: "-80px" }}
+      transition={{ duration: 0.6, ease: "easeOut" }}
+    >
+      <div className="container">
         <div className="text-center mb-16">
           <h2 className="text-3xl md:text-5xl font-bold mb-4">Почему это необходимо?</h2>
           <p className="text-muted-foreground max-w-2xl mx-auto">
@@ -53,11 +61,11 @@ export function Advantages() {
           {advantages.map((adv, index) => (
             <motion.div
               key={index}
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
+              initial={reduceMotion ? false : { opacity: 0, y: 20 }}
+              whileInView={reduceMotion ? undefined : { opacity: 1, y: 0 }}
               viewport={{ once: true }}
-              transition={{ delay: index * 0.1 }}
-              className="bg-background p-8 rounded-2xl shadow-sm border hover:shadow-md transition-shadow"
+              transition={{ delay: index * 0.08, duration: 0.5 }}
+              className="bg-background/60 backdrop-blur-xl p-8 rounded-2xl shadow-sm border border-white/15 hover:shadow-md"
             >
               <div className="mb-4">{adv.icon}</div>
               <h3 className="text-xl font-bold mb-2">{adv.title}</h3>
@@ -66,6 +74,6 @@ export function Advantages() {
           ))}
         </div>
       </div>
-    </section>
+    </motion.section>
   );
 }

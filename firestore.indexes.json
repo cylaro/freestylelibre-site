@@ -17,10 +17,11 @@
       ]
     },
     {
-      "collectionGroup": "financeTransactions",
+      "collectionGroup": "products",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "date", "order": "DESCENDING" }
+        { "fieldPath": "active", "order": "ASCENDING" },
+        { "fieldPath": "sortOrder", "order": "ASCENDING" }
       ]
     }
   ],

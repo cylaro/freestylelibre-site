@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect } from "react";
-import { Product } from "@/components/Catalog";
+import { Product } from "@/lib/schemas";
 import { useAuth } from "./AuthContext";
 
 interface CartItem extends Product {
@@ -39,6 +39,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         setItems(JSON.parse(savedCart));
       } catch (e) {
         console.error("Failed to parse cart", e);
+        localStorage.removeItem("cart");
+        setItems([]);
       }
     }
   }, []);

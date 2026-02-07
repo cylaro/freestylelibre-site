@@ -1,30 +1,30 @@
 "use client";
 
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { Navbar } from "@/components/Navbar";
 import { useAuth } from "@/contexts/AuthContext";
 import { db } from "@/lib/firebase";
+import { normalizeOrder, normalizeProduct, normalizePurchase, normalizeReview, normalizeSale, normalizeSettings, normalizeUser, settingsDefaults, Order, Product, Purchase, Review, Sale, SettingsConfig, UserProfile } from "@/lib/schemas";
+import { callWorker } from "@/lib/workerClient";
+import { formatTimestamp } from "@/lib/utils";
 import { 
   collection, 
   query, 
-  getDocs, 
   orderBy, 
-  updateDoc, 
   doc, 
-  addDoc, 
-  deleteDoc,
   onSnapshot,
-  where,
-  setDoc,
-  increment,
-  limit
+  where
 } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { NumericInput } from "@/components/ui/numeric-input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { 
   Table, 
   TableBody, 
@@ -38,6 +38,7 @@ import {
   DialogContent, 
   DialogHeader, 
   DialogTitle, 
+  DialogDescription,
   DialogTrigger,
   DialogFooter
 } from "@/components/ui/dialog";
@@ -48,22 +49,21 @@ import {
   ShoppingCart, 
   Settings, 
   BarChart3, 
+  Activity,
+  ClipboardList,
   MessageSquare,
   Plus,
   Pencil,
   Trash2,
   Check,
-  X,
   ShieldAlert,
-  Download,
   Wallet,
-  ArrowUpRight,
-  ArrowDownRight,
   RefreshCw,
   Search,
   Filter,
   Eye
 } from "lucide-react";
+import Link from "next/link";
 import { 
   Chart as ChartJS, 
   CategoryScale, 
@@ -77,7 +77,7 @@ import {
   Filler
 } from 'chart.js';
 import { Line, Bar } from 'react-chartjs-2';
-import * as XLSX from 'xlsx';
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 
 ChartJS.register(
   CategoryScale,
@@ -91,191 +91,1246 @@ ChartJS.register(
   Filler
 );
 
+const RESERVED_ORDER_FIELD_IDS = new Set([
+  "telegram",
+  "phone",
+  "name",
+  "deliveryMethod",
+  "deliveryService",
+  "city",
+]);
+
+type AdminLogLevel = "info" | "success" | "error";
+type AdminLogEntry = {
+  id: string;
+  level: AdminLogLevel;
+  message: string;
+  time: string;
+  details?: string;
+};
+
+function toDateValue(value: unknown): Date | null {
+  if (!value) return null;
+  if (value instanceof Date) return value;
+  if (typeof value === "string" || typeof value === "number") return new Date(value);
+  if (typeof value === "object") {
+    const anyValue = value as { toDate?: () => Date; seconds?: number };
+    if (typeof anyValue.toDate === "function") return anyValue.toDate();
+    if (typeof anyValue.seconds === "number") return new Date(anyValue.seconds * 1000);
+  }
+  return null;
+}
+
+const MSK_TIMEZONE = "Europe/Moscow";
+const MSK_MONTH_FORMATTER = new Intl.DateTimeFormat("ru-RU", { timeZone: MSK_TIMEZONE, month: "short" });
+const MSK_MONTH_LONG_FORMATTER = new Intl.DateTimeFormat("ru-RU", { timeZone: MSK_TIMEZONE, month: "long", year: "numeric" });
+const MSK_YEAR_MONTH_FORMATTER = new Intl.DateTimeFormat("ru-RU", { timeZone: MSK_TIMEZONE, year: "numeric", month: "2-digit" });
+const MSK_DATE_INPUT_FORMATTER = new Intl.DateTimeFormat("en-CA", { timeZone: MSK_TIMEZONE, year: "numeric", month: "2-digit", day: "2-digit" });
+
+function getMskMonthKey(date: Date) {
+  const parts = MSK_YEAR_MONTH_FORMATTER.formatToParts(date);
+  const year = parts.find((part) => part.type === "year")?.value || String(date.getFullYear());
+  const month = parts.find((part) => part.type === "month")?.value || String(date.getMonth() + 1).padStart(2, "0");
+  return `${year}-${month}`;
+}
+
+function formatMskMonthShort(date: Date) {
+  return MSK_MONTH_FORMATTER.format(date);
+}
+
+function formatMskMonthLong(date: Date) {
+  return MSK_MONTH_LONG_FORMATTER.format(date);
+}
+
+function toMskInputDate(date: Date = new Date()) {
+  return MSK_DATE_INPUT_FORMATTER.format(date);
+}
+
 export default function AdminPage() {
   const { user, profile, loading: authLoading } = useAuth();
+  const reduceMotion = useReducedMotion();
   const [activeTab, setActiveTab] = useState("dashboard");
-  const [orders, setOrders] = useState<any[]>([]);
-  const [products, setProducts] = useState<any[]>([]);
-  const [users, setUsers] = useState<any[]>([]);
-  const [reviews, setReviews] = useState<any[]>([]);
-  const [finance, setFinance] = useState<any[]>([]);
-  const [settings, setSettings] = useState<any>(null);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [users, setUsers] = useState<UserProfile[]>([]);
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [purchases, setPurchases] = useState<Purchase[]>([]);
+  const [sales, setSales] = useState<Sale[]>([]);
+  const [orderListTab, setOrderListTab] = useState<"active" | "archive">("active");
+  const reviewAutofillRef = useRef<Set<string>>(new Set());
   
   const [searchQuery, setSearchQuery] = useState("");
   const [isSeeding, setIsSeeding] = useState(false);
 
-  // Stats
+  const [productDialogOpen, setProductDialogOpen] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [productDraft, setProductDraft] = useState({
+    name: "",
+    description: "",
+    price: 0,
+    imageUrl: "",
+    inStock: true,
+    discountPercent: 0,
+    featuresText: "",
+    active: true,
+    costPrice: 0,
+  });
+
+  const [financeTab, setFinanceTab] = useState<"purchases" | "sales">("purchases");
+  const [purchaseDialogOpen, setPurchaseDialogOpen] = useState(false);
+  const [editingPurchase, setEditingPurchase] = useState<Purchase | null>(null);
+  const [purchaseDraft, setPurchaseDraft] = useState({
+    productId: "",
+    qty: 1,
+    totalAmount: 0,
+    comment: "",
+    date: toMskInputDate(),
+  });
+  const [saleDialogOpen, setSaleDialogOpen] = useState(false);
+  const [editingSale, setEditingSale] = useState<Sale | null>(null);
+  const [saleDraft, setSaleDraft] = useState({
+    productId: "",
+    qty: 1,
+    totalAmount: 0,
+    comment: "",
+    date: toMskInputDate(),
+  });
+
+  const [reviewDialogOpen, setReviewDialogOpen] = useState(false);
+  const [reviewDraft, setReviewDraft] = useState<Review | null>(null);
+  const [userDialogOpen, setUserDialogOpen] = useState(false);
+  const [userDraft, setUserDraft] = useState<UserProfile | null>(null);
+
+  const [orderEditOpen, setOrderEditOpen] = useState(false);
+  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+  const [orderDraft, setOrderDraft] = useState({
+    deliveryMethod: "pickup" as "pickup" | "delivery",
+    deliveryService: "",
+    city: "",
+    telegram: "",
+    items: [{ productId: "", quantity: 1 }],
+  });
+
+  const [settingsDraft, setSettingsDraft] = useState<SettingsConfig>(settingsDefaults);
+
+
+  const [statusSnapshot, setStatusSnapshot] = useState<{
+    workerOk: boolean | null;
+    firestoreOk: boolean | null;
+    firestoreError: string;
+    telegramConfigured: boolean | null;
+    checkedAt: string;
+  }>({
+    workerOk: null,
+    firestoreOk: null,
+    firestoreError: "",
+    telegramConfigured: null,
+    checkedAt: "",
+  });
+  const [statusLoading, setStatusLoading] = useState(false);
+  const [logEntries, setLogEntries] = useState<AdminLogEntry[]>([]);
+
+  const tabMotion = {
+    initial: reduceMotion ? false : { opacity: 0, y: 18 },
+    animate: { opacity: 1, y: 0 },
+    transition: reduceMotion ? { duration: 0 } : { duration: 0.35, ease: "easeOut" },
+  };
+
+  const panelMotion = {
+    initial: reduceMotion ? false : { opacity: 0, y: 12 },
+    animate: { opacity: 1, y: 0 },
+    exit: reduceMotion ? { opacity: 0 } : { opacity: 0, y: 8 },
+    transition: reduceMotion ? { duration: 0 } : { duration: 0.25, ease: "easeOut" },
+  };
+
+  const workerUrl = process.env.NEXT_PUBLIC_WORKER_URL || "https://freestyle-store-worker.scheglovvrn.workers.dev";
+
+  const pushLog = useCallback((level: AdminLogLevel, message: string, details?: string) => {
+    const id = typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    setLogEntries((prev) => [
+      {
+        id,
+        level,
+        message,
+        details,
+        time: new Date().toLocaleTimeString("ru-RU"),
+      },
+      ...prev,
+    ].slice(0, 200));
+  }, []);
+
+  const callWorkerWithLog = useCallback(async <T extends Record<string, unknown> = Record<string, unknown>>(
+    path: string,
+    token: string,
+    method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" = "POST",
+    body?: Record<string, unknown>,
+    label?: string
+  ) => {
+    const title = label || `${method} ${path}`;
+    pushLog("info", `Запрос: ${title}`);
+    try {
+      const res = await callWorker<T>(path, token, method, body);
+      pushLog("success", `Успешно: ${title}`);
+      return res;
+    } catch (error: unknown) {
+      const details = error instanceof Error ? error.message : "Неизвестная ошибка";
+      pushLog("error", `Ошибка: ${title}`, details);
+      throw error;
+    }
+  }, [pushLog]);
+
+  const refreshStatus = useCallback(async () => {
+    if (!user) return;
+    setStatusLoading(true);
+    setStatusSnapshot((prev) => ({
+      ...prev,
+      workerOk: null,
+      firestoreOk: null,
+      firestoreError: "",
+      telegramConfigured: null,
+    }));
+    try {
+      const workerPromise = (async () => {
+        try {
+          const res = await fetch(`${workerUrl}/api/health`);
+          const data = await res.json().catch(() => null) as { status?: string } | null;
+          return res.ok && data?.status === "ok";
+        } catch (error: unknown) {
+          const details = error instanceof Error ? error.message : "Worker недоступен";
+          pushLog("error", "Ошибка проверки Worker", details);
+          return false;
+        }
+      })();
+
+      const statusPromise = (async () => {
+        const token = await user.getIdToken();
+        return callWorkerWithLog<{ worker: { ok: boolean }; firestore: { ok: boolean; error?: string }; telegram: { configured: boolean } }>(
+          "/api/admin/status",
+          token,
+          "GET",
+          undefined,
+          "Статус системы"
+        );
+      })();
+
+      const [workerOk, status] = await Promise.all([workerPromise, statusPromise]);
+      setStatusSnapshot({
+        workerOk,
+        firestoreOk: Boolean(status.firestore?.ok),
+        firestoreError: status.firestore?.error || "",
+        telegramConfigured: Boolean(status.telegram?.configured),
+        checkedAt: new Date().toLocaleString("ru-RU"),
+      });
+    } catch (error: unknown) {
+      const details = error instanceof Error ? error.message : "Неизвестная ошибка";
+      pushLog("error", "Ошибка проверки статуса", details);
+      const workerOk = await fetch(`${workerUrl}/api/health`)
+        .then(async (res) => {
+          const data = await res.json().catch(() => null) as { status?: string } | null;
+          return res.ok && data?.status === "ok";
+        })
+        .catch(() => false);
+      setStatusSnapshot((prev) => ({
+        ...prev,
+        workerOk,
+        firestoreOk: false,
+        firestoreError: details,
+        telegramConfigured: prev.telegramConfigured ?? null,
+        checkedAt: new Date().toLocaleString("ru-RU"),
+      }));
+    } finally {
+      setStatusLoading(false);
+    }
+  }, [user, workerUrl, callWorkerWithLog, pushLog]);
+
+  const handleTelegramTest = async () => {
+    if (!user) return;
+    try {
+      const token = await user.getIdToken();
+      await callWorkerWithLog("/api/admin/telegram/test", token, "POST", undefined, "Telegram тест");
+      toast.success("Тестовое сообщение отправлено");
+    } catch {
+      toast.error("Ошибка отправки Telegram");
+    }
+  };
+
+  const getOrderStatusInfo = (status: string) => {
+    switch (status) {
+      case "new":
+        return { label: "На рассмотрении", badgeClass: "bg-blue-500/10 text-blue-500", textClass: "text-blue-500" };
+      case "processing":
+        return { label: "Выполняется", badgeClass: "bg-orange-500/10 text-orange-500", textClass: "text-orange-500" };
+      case "delivered":
+        return { label: "Выдан", badgeClass: "bg-emerald-500/10 text-emerald-500", textClass: "text-emerald-500" };
+      case "cancelled":
+        return { label: "Отменен", badgeClass: "bg-destructive/10 text-destructive", textClass: "text-destructive" };
+      default:
+        return { label: status, badgeClass: "bg-muted text-muted-foreground", textClass: "text-muted-foreground" };
+    }
+  };
+
+  const formatTelegramValue = (value?: string) => {
+    if (!value) return "—";
+    const trimmed = value.trim();
+    if (!trimmed) return "—";
+    return trimmed.startsWith("@") ? trimmed : `@${trimmed}`;
+  };
+
+  const resolveDeliveryServiceLabel = useCallback((value?: string) => {
+    if (!value) return "";
+    const normalized = value.trim().toLowerCase();
+    const match = settingsDraft.deliveryServices.find(
+      (service) => service.id.toLowerCase() === normalized || service.label.toLowerCase() === normalized
+    );
+    return match?.label || value;
+  }, [settingsDraft.deliveryServices]);
+
+  const resolveDeliveryServiceId = useCallback((value?: string) => {
+    if (!value) return "";
+    const normalized = value.trim().toLowerCase();
+    const match = settingsDraft.deliveryServices.find(
+      (service) => service.id.toLowerCase() === normalized || service.label.toLowerCase() === normalized
+    );
+    return match?.id || value;
+  }, [settingsDraft.deliveryServices]);
+
+  const isArchivedStatus = useCallback((status: string) => status === "delivered" || status === "cancelled", []);
+
+  const salesByMonth = useMemo(() => {
+    const now = new Date();
+    const labels: string[] = [];
+    const data: number[] = [];
+    const getDateValue = (value?: unknown, fallback?: unknown) => toDateValue(value) || toDateValue(fallback);
+    for (let i = 5; i >= 0; i -= 1) {
+      const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = getMskMonthKey(date);
+      labels.push(formatMskMonthShort(date));
+      const monthSalesQty = sales
+        .filter((sale) => {
+          const d = getDateValue(sale.date, sale.createdAt);
+          return d && getMskMonthKey(d) === key;
+        })
+        .reduce((sum, sale) => sum + Number(sale.qty || 0), 0);
+      data.push(monthSalesQty);
+    }
+    return { labels, data };
+  }, [sales]);
+
+  const productPopularity = useMemo(() => {
+    const counts = new Map<string, number>();
+    sales.forEach((sale) => {
+      const key = sale.productId || sale.productName;
+      counts.set(key, (counts.get(key) || 0) + Number(sale.qty || 0));
+    });
+    const labels = products.map((p) => p.name);
+    const data = products.map((p) => counts.get(p.id) || counts.get(p.name) || 0);
+    return { labels, data };
+  }, [sales, products]);
+
+  const monthlyFinance = useMemo(() => {
+    const now = new Date();
+    const getDateValue = (value?: unknown, fallback?: unknown) => toDateValue(value) || toDateValue(fallback);
+    const map = new Map<string, { sales: number; purchases: number; soldQty: number; purchasedQty: number }>();
+
+    for (const sale of sales) {
+      const d = getDateValue(sale.date, sale.createdAt);
+      if (!d) continue;
+      const key = getMskMonthKey(d);
+      const entry = map.get(key) || { sales: 0, purchases: 0, soldQty: 0, purchasedQty: 0 };
+      entry.sales += Number(sale.totalAmount || 0);
+      entry.soldQty += Number(sale.qty || 0);
+      map.set(key, entry);
+    }
+
+    for (const purchase of purchases) {
+      const d = getDateValue(purchase.date, purchase.createdAt);
+      if (!d) continue;
+      const key = getMskMonthKey(d);
+      const entry = map.get(key) || { sales: 0, purchases: 0, soldQty: 0, purchasedQty: 0 };
+      entry.purchases += Number(purchase.totalAmount || 0);
+      entry.purchasedQty += Number(purchase.qty || 0);
+      map.set(key, entry);
+    }
+
+    const currentKey = getMskMonthKey(now);
+    const prevKey = getMskMonthKey(new Date(now.getFullYear(), now.getMonth() - 1, 1));
+    const current = map.get(currentKey) || { sales: 0, purchases: 0, soldQty: 0, purchasedQty: 0 };
+    const previous = map.get(prevKey) || { sales: 0, purchases: 0, soldQty: 0, purchasedQty: 0 };
+
+    const series = [];
+    for (let i = 5; i >= 0; i -= 1) {
+      const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = getMskMonthKey(date);
+      const entry = map.get(key) || { sales: 0, purchases: 0, soldQty: 0, purchasedQty: 0 };
+      series.push({
+        key,
+        label: formatMskMonthShort(date),
+        sales: entry.sales,
+        purchases: entry.purchases,
+        profit: entry.sales - entry.purchases,
+      });
+    }
+
+    return { current, previous, series, currentKey };
+  }, [sales, purchases]);
+
+  const inventory = useMemo(() => {
+    const map = new Map<string, { productId: string; name: string; purchased: number; sold: number }>();
+    products.forEach((product) => {
+      map.set(product.id, { productId: product.id, name: product.name, purchased: 0, sold: 0 });
+    });
+
+    purchases.forEach((purchase) => {
+      const existing = map.get(purchase.productId) || {
+        productId: purchase.productId,
+        name: purchase.productName || "Товар",
+        purchased: 0,
+        sold: 0,
+      };
+      existing.purchased += Number(purchase.qty || 0);
+      map.set(purchase.productId, existing);
+    });
+
+    sales.forEach((sale) => {
+      const existing = map.get(sale.productId) || {
+        productId: sale.productId,
+        name: sale.productName || "Товар",
+        purchased: 0,
+        sold: 0,
+      };
+      existing.sold += Number(sale.qty || 0);
+      map.set(sale.productId, existing);
+    });
+
+    return Array.from(map.values()).map((item) => ({
+      ...item,
+      stock: item.purchased - item.sold,
+    }));
+  }, [products, purchases, sales]);
+
+  const totals = useMemo(() => {
+    const totalStock = inventory.reduce((sum, item) => sum + item.stock, 0);
+    const totalSold = sales.reduce((sum, sale) => sum + Number(sale.qty || 0), 0);
+    const totalPurchased = purchases.reduce((sum, purchase) => sum + Number(purchase.qty || 0), 0);
+    return { totalStock, totalSold, totalPurchased };
+  }, [inventory, sales, purchases]);
+
+  const inventorySorted = useMemo(
+    () => [...inventory].sort((a, b) => b.stock - a.stock),
+    [inventory]
+  );
+
+  const inventoryByProductId = useMemo(() => {
+    return new Map(inventory.map((item) => [item.productId, item]));
+  }, [inventory]);
+
+  const getOrderStockIssue = useCallback((order: Order) => {
+    if (!order?.items?.length) return "";
+    const required = new Map<string, { qty: number; name: string }>();
+    for (const item of order.items) {
+      if (!item?.productId) continue;
+      const existing = required.get(item.productId) || { qty: 0, name: item.name || "Товар" };
+      existing.qty += Number(item.quantity || 0);
+      required.set(item.productId, existing);
+    }
+    for (const [productId, info] of required.entries()) {
+      const stockItem = inventoryByProductId.get(productId);
+      const available = stockItem?.stock ?? 0;
+      if (info.qty > available) {
+        return `Недостаточно остатка по товару: ${info.name}. Доступно ${Math.max(0, available)} шт.`;
+      }
+    }
+    return "";
+  }, [inventoryByProductId]);
+
   const stats = useMemo(() => {
-    const totalSales = orders.filter(o => o.status === "delivered").reduce((sum, o) => sum + (o.totalPrice || 0), 0);
-    const pendingOrders = orders.filter(o => o.status === "new" || o.status === "processing").length;
+    const pendingOrders = orders.filter(order => order.status === "new" || order.status === "processing").length;
     const activeUsers = users.length;
-    const avgOrderValue = totalSales > 0 ? Math.round(totalSales / orders.filter(o => o.status === "delivered").length) : 0;
-    
+    const currentKey = getMskMonthKey(new Date());
+    const getMonthKeyFrom = (value?: unknown, fallback?: unknown) => {
+      const date = toDateValue(value) || toDateValue(fallback);
+      return date ? getMskMonthKey(date) : "";
+    };
+
+    const deliveredOrdersCurrent = orders.filter(order =>
+      order.status === "delivered" && getMonthKeyFrom(order.deliveredAt, order.createdAt) === currentKey
+    );
+    const manualSalesCurrent = sales.filter(sale =>
+      sale.sourceType === "manual" && getMonthKeyFrom(sale.date, sale.createdAt) === currentKey
+    );
+    const avgCheckBase = deliveredOrdersCurrent.length + manualSalesCurrent.length;
+    const avgOrderValue = avgCheckBase > 0 ? Math.round(monthlyFinance.current.sales / avgCheckBase) : 0;
+    const totalSales = monthlyFinance.current.sales - monthlyFinance.current.purchases;
+
     return { totalSales, pendingOrders, activeUsers, avgOrderValue };
-  }, [orders, users]);
+  }, [orders, users, sales, monthlyFinance]);
+
+
+  const normalizedQuery = searchQuery.trim().toLowerCase();
+
+  const filteredOrders = useMemo(() => {
+    const base = normalizedQuery ? orders.filter(order =>
+      order.id.toLowerCase().includes(normalizedQuery) ||
+      order.name.toLowerCase().includes(normalizedQuery) ||
+      (order.userEmail || "").toLowerCase().includes(normalizedQuery) ||
+      (order.phone || "").toLowerCase().includes(normalizedQuery)
+    ) : orders;
+    return orderListTab === "archive"
+      ? base.filter(order => isArchivedStatus(order.status))
+      : base.filter(order => !isArchivedStatus(order.status));
+  }, [orders, normalizedQuery, orderListTab, isArchivedStatus]);
+
+  const activeOrdersCount = useMemo(
+    () => orders.filter(order => !isArchivedStatus(order.status)).length,
+    [orders, isArchivedStatus]
+  );
+
+  const archiveOrdersCount = useMemo(
+    () => orders.filter(order => isArchivedStatus(order.status)).length,
+    [orders, isArchivedStatus]
+  );
+
+  const filteredProducts = useMemo(() => {
+    if (!normalizedQuery) return products;
+    return products.filter(product =>
+      product.name.toLowerCase().includes(normalizedQuery) ||
+      product.description.toLowerCase().includes(normalizedQuery)
+    );
+  }, [products, normalizedQuery]);
+
+  const filteredUsers = useMemo(() => {
+    if (!normalizedQuery) return users;
+    return users.filter(userItem =>
+      (userItem.email || "").toLowerCase().includes(normalizedQuery) ||
+      (userItem.name || "").toLowerCase().includes(normalizedQuery) ||
+      (userItem.phone || "").toLowerCase().includes(normalizedQuery)
+    );
+  }, [users, normalizedQuery]);
+
+  const filteredReviews = useMemo(() => {
+    if (!normalizedQuery) return reviews;
+    return reviews.filter(review =>
+      review.text.toLowerCase().includes(normalizedQuery) ||
+      (review.userEmail || "").toLowerCase().includes(normalizedQuery) ||
+      (review.userName || "").toLowerCase().includes(normalizedQuery)
+    );
+  }, [reviews, normalizedQuery]);
+
+  const filteredPurchases = useMemo(() => {
+    if (!normalizedQuery) return purchases;
+    return purchases.filter((purchase) =>
+      purchase.productName.toLowerCase().includes(normalizedQuery) ||
+      (purchase.comment || "").toLowerCase().includes(normalizedQuery) ||
+      purchase.id.toLowerCase().includes(normalizedQuery)
+    );
+  }, [purchases, normalizedQuery]);
+
+  const filteredSales = useMemo(() => {
+    if (!normalizedQuery) return sales;
+    return sales.filter((sale) =>
+      sale.productName.toLowerCase().includes(normalizedQuery) ||
+      (sale.comment || "").toLowerCase().includes(normalizedQuery) ||
+      sale.id.toLowerCase().includes(normalizedQuery)
+    );
+  }, [sales, normalizedQuery]);
 
   useEffect(() => {
     if (!profile?.isAdmin) return;
 
-    const unsubOrders = onSnapshot(query(collection(db, "orders"), orderBy("createdAt", "desc")), (snap) => {
-      setOrders(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
+    const unsubOrders = onSnapshot(
+      query(collection(db, "orders"), orderBy("createdAt", "desc")),
+      (snap) => {
+        setOrders(snap.docs.map(doc => normalizeOrder(doc.id, doc.data())));
+      },
+      (error) => {
+        pushLog("error", "Firestore: заказы", error?.message || "Ошибка загрузки заказов");
+      }
+    );
 
-    const unsubProducts = onSnapshot(collection(db, "products"), (snap) => {
-      setProducts(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
+    const unsubProducts = onSnapshot(
+      query(collection(db, "products"), where("active", "==", true), orderBy("sortOrder", "asc")),
+      (snap) => {
+        setProducts(snap.docs.map(doc => normalizeProduct(doc.id, doc.data())));
+      },
+      (error) => {
+        pushLog("error", "Firestore: товары", error?.message || "Ошибка загрузки товаров");
+      }
+    );
 
-    const unsubUsers = onSnapshot(collection(db, "users"), (snap) => {
-      setUsers(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
+    const unsubUsers = onSnapshot(
+      collection(db, "users"),
+      (snap) => {
+        setUsers(
+          snap.docs.map(docSnap => {
+            const data = docSnap.data();
+            return normalizeUser(data, { uid: docSnap.id, email: data.email || "" });
+          })
+        );
+      },
+      (error) => {
+        pushLog("error", "Firestore: клиенты", error?.message || "Ошибка загрузки клиентов");
+      }
+    );
 
-    const unsubReviews = onSnapshot(query(collection(db, "reviews"), orderBy("createdAt", "desc")), (snap) => {
-      setReviews(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
+    const unsubReviews = onSnapshot(
+      query(collection(db, "reviews"), orderBy("createdAt", "desc")),
+      (snap) => {
+        setReviews(snap.docs.map(doc => normalizeReview(doc.id, doc.data())));
+      },
+      (error) => {
+        pushLog("error", "Firestore: отзывы", error?.message || "Ошибка загрузки отзывов");
+      }
+    );
 
-    const unsubFinance = onSnapshot(query(collection(db, "financeTransactions"), orderBy("date", "desc")), (snap) => {
-      setFinance(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
+    const unsubPurchases = onSnapshot(
+      collection(db, "purchases"),
+      (snap) => {
+        const items = snap.docs.map(doc => normalizePurchase(doc.id, doc.data()));
+        items.sort((a, b) => (toDateValue(b.date)?.getTime() || 0) - (toDateValue(a.date)?.getTime() || 0));
+        setPurchases(items);
+      },
+      (error) => {
+        pushLog("error", "Firestore: закупки", error?.message || "Ошибка загрузки закупок");
+      }
+    );
 
-    const unsubSettings = onSnapshot(doc(db, "settings", "config"), (snap) => {
-      setSettings(snap.data());
-    });
+    const unsubSales = onSnapshot(
+      collection(db, "sales"),
+      (snap) => {
+        const items = snap.docs.map(doc => normalizeSale(doc.id, doc.data()));
+        items.sort(
+          (a, b) =>
+            (toDateValue(b.createdAt)?.getTime() || toDateValue(b.date)?.getTime() || 0) -
+            (toDateValue(a.createdAt)?.getTime() || toDateValue(a.date)?.getTime() || 0)
+        );
+        setSales(items);
+      },
+      (error) => {
+        pushLog("error", "Firestore: продажи", error?.message || "Ошибка загрузки продаж");
+      }
+    );
+
+    const unsubSettings = onSnapshot(
+      doc(db, "settings", "config"),
+      (snap) => {
+        const data = snap.exists() ? normalizeSettings(snap.data()) : settingsDefaults;
+        setSettingsDraft(data);
+      },
+      (error) => {
+        pushLog("error", "Firestore: настройки", error?.message || "Ошибка загрузки настроек");
+      }
+    );
 
     return () => {
       unsubOrders();
       unsubProducts();
       unsubUsers();
       unsubReviews();
-      unsubFinance();
+      unsubPurchases();
+      unsubSales();
       unsubSettings();
     };
-  }, [profile]);
+  }, [profile, pushLog]);
+
+  useEffect(() => {
+    if (!profile?.isAdmin || !user) return;
+    if (reviews.length === 0 || users.length === 0) return;
+    const usersMap = new Map(users.map((item) => [item.uid, item]));
+    const targets = reviews.filter((review) =>
+      !review.userName &&
+      review.userId &&
+      review.userId !== "seed" &&
+      !reviewAutofillRef.current.has(review.id)
+    );
+    if (targets.length === 0) return;
+
+    const syncNames = async () => {
+      const token = await user.getIdToken();
+      for (const review of targets) {
+        reviewAutofillRef.current.add(review.id);
+        const userProfile = usersMap.get(review.userId);
+        const name = (userProfile?.name || "").trim();
+        if (!name) continue;
+        try {
+          await callWorkerWithLog(
+            `/api/admin/reviews/${review.id}`,
+            token,
+            "POST",
+            { status: review.status, userName: name },
+            "Автозаполнение имени"
+          );
+        } catch (error) {
+          console.error("Failed to update review name", error);
+        }
+      }
+    };
+
+    syncNames();
+  }, [reviews, users, user, profile, callWorkerWithLog]);
+
+  useEffect(() => {
+    if (activeTab === "status") {
+      refreshStatus();
+    }
+  }, [activeTab, user, refreshStatus]);
 
   if (authLoading) return <div className="flex items-center justify-center min-h-screen">Подождите...</div>;
   if (!profile?.isAdmin) return <div className="flex flex-col items-center justify-center min-h-screen text-destructive gap-4">
     <ShieldAlert className="w-16 h-16" />
     <h1 className="text-2xl font-bold">Доступ запрещен</h1>
     <p>Только администраторы могут просматривать эту страницу.</p>
-    <Button asChild><a href="/">На главную</a></Button>
+    <Button asChild><Link href="/">На главную</Link></Button>
   </div>;
 
-  const handleUpdateOrderStatus = async (orderId: string, newStatus: string) => {
-    try {
-      await updateDoc(doc(db, "orders", orderId), { status: newStatus });
-      toast.success(`Статус обновлен: ${newStatus}`);
-      
-      if (newStatus === "delivered") {
-        const order = orders.find(o => o.id === orderId);
-        if (order && order.userId) {
-          // Trigger loyalty recalculation (in a real app this would be in the Worker)
-          const userDoc = users.find(u => u.uid === order.userId);
-          if (userDoc) {
-            const newTotalSpent = (userDoc.totalSpent || 0) + order.totalPrice;
-            const newTotalOrders = (userDoc.totalOrders || 0) + 1;
-            
-            let level = 0;
-            let discount = 0;
-            if (newTotalSpent >= 50000 || newTotalOrders >= 25) { level = 3; discount = 10; }
-            else if (newTotalSpent >= 30000 || newTotalOrders >= 10) { level = 2; discount = 7; }
-            else if (newTotalSpent >= 15000 || newTotalOrders >= 3) { level = 1; discount = 5; }
+  const workerBadge = getStatusBadge(statusSnapshot.workerOk, "OK", "Недоступен");
+  const firestoreBadge = getStatusBadge(statusSnapshot.firestoreOk, "OK", "Ошибка");
+  const telegramBadge = statusSnapshot.telegramConfigured === null
+    ? { label: "Проверка...", className: "bg-muted text-muted-foreground border-none" }
+    : statusSnapshot.telegramConfigured
+      ? { label: "Конфиг найден", className: "bg-emerald-500/10 text-emerald-500 border-none" }
+      : { label: "Не настроен", className: "bg-muted text-muted-foreground border-none" };
 
-            await updateDoc(doc(db, "users", userDoc.id), {
-              totalSpent: newTotalSpent,
-              totalOrders: newTotalOrders,
-              loyaltyLevel: level,
-              loyaltyDiscount: discount
-            });
-          }
-        }
+  const now = new Date();
+  const currentMonthLabel = formatMskMonthLong(now);
+  const currentProfit = monthlyFinance.current.sales - monthlyFinance.current.purchases;
+  const sixMonthProfit = monthlyFinance.series.reduce((sum, item) => sum + item.profit, 0);
+  const canSavePurchase = Boolean(
+    purchaseDraft.productId &&
+      Number(purchaseDraft.qty || 0) > 0 &&
+      Number(purchaseDraft.totalAmount || 0) > 0
+  );
+  const canSaveSale = Boolean(
+    saleDraft.productId &&
+      Number(saleDraft.qty || 0) > 0 &&
+      Number(saleDraft.totalAmount || 0) > 0
+  );
+
+  const handleUpdateOrderStatus = async (orderId: string, newStatus: string, stockIssue?: string) => {
+    if (!user) return;
+    if (newStatus === "cancelled") {
+      const confirmed = window.confirm("Отменить заказ и удалить его из базы данных?");
+      if (!confirmed) return;
+      try {
+        const token = await user.getIdToken();
+        await callWorkerWithLog(`/api/admin/orders/${orderId}/status`, token, "POST", { status: newStatus }, "Отмена заказа");
+        toast.success("Заказ отменен и удален");
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Ошибка удаления";
+        toast.error(message);
       }
-    } catch (e) {
-      toast.error("Ошибка обновления");
+      return;
+    }
+    if (newStatus === "delivered" && stockIssue) {
+      toast.error(stockIssue);
+      return;
+    }
+    try {
+      const token = await user.getIdToken();
+      await callWorkerWithLog(`/api/admin/orders/${orderId}/status`, token, "POST", { status: newStatus }, "Статус заказа");
+      toast.success(`Статус обновлен: ${getOrderStatusInfo(newStatus).label}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Ошибка обновления";
+      toast.error(message);
     }
   };
 
-  const handleReviewAction = async (reviewId: string, action: 'approve' | 'reject') => {
+  const openOrderEditDialog = (order: Order) => {
+    const items = order.items?.length
+      ? order.items.map((item) => ({ productId: item.productId, quantity: item.quantity }))
+      : [{ productId: products[0]?.id || "", quantity: 1 }];
+    setEditingOrder(order);
+    setOrderDraft({
+      deliveryMethod: order.deliveryMethod || "pickup",
+      deliveryService: resolveDeliveryServiceId(order.deliveryService || ""),
+      city: order.city || "",
+      telegram: order.telegram || "",
+      items,
+    });
+    setOrderEditOpen(true);
+  };
+
+  const updateOrderItem = (index: number, patch: Partial<{ productId: string; quantity: number }>) => {
+    setOrderDraft((prev) => ({
+      ...prev,
+      items: prev.items.map((item, i) => (i === index ? { ...item, ...patch } : item)),
+    }));
+  };
+
+  const addOrderItem = () => {
+    setOrderDraft((prev) => ({
+      ...prev,
+      items: [...prev.items, { productId: products[0]?.id || "", quantity: 1 }],
+    }));
+  };
+
+  const removeOrderItem = (index: number) => {
+    setOrderDraft((prev) => ({
+      ...prev,
+      items: prev.items.filter((_, i) => i !== index),
+    }));
+  };
+
+  const canSaveOrderEdit = Boolean(
+    editingOrder &&
+      orderDraft.items.length > 0 &&
+      orderDraft.items.every((item) => item.productId && item.quantity > 0) &&
+      (orderDraft.deliveryMethod === "pickup" || (orderDraft.deliveryService && orderDraft.city))
+  );
+
+  const handleSaveOrderEdit = async () => {
+    if (!user || !editingOrder) return;
+    if (editingOrder.status === "delivered") {
+      toast.error("Нельзя менять выданный заказ");
+      return;
+    }
     try {
-      if (action === 'approve') {
-        await updateDoc(doc(db, "reviews", reviewId), { status: 'approved' });
-      } else {
-        await deleteDoc(doc(db, "reviews", reviewId));
-      }
-      toast.success(`Отзыв ${action === 'approve' ? 'одобрен' : 'удален'}`);
-    } catch (e) {
+      const token = await user.getIdToken();
+      await callWorkerWithLog(
+        `/api/admin/orders/${editingOrder.id}/update`,
+        token,
+        "POST",
+        {
+          items: orderDraft.items.map((item) => ({ id: item.productId, quantity: Number(item.quantity || 0) })),
+          deliveryMethod: orderDraft.deliveryMethod,
+          deliveryService: orderDraft.deliveryMethod === "delivery" ? orderDraft.deliveryService : "",
+          city: orderDraft.deliveryMethod === "delivery" ? orderDraft.city : "",
+          telegram: orderDraft.telegram,
+        },
+        "Обновление заказа"
+      );
+      toast.success("Заказ обновлен");
+      setOrderEditOpen(false);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Ошибка обновления заказа";
+      toast.error(message);
+    }
+  };
+
+  const handleReviewAction = async (reviewId: string, action: "approve" | "reject") => {
+    if (!user) return;
+    try {
+      const token = await user.getIdToken();
+      await callWorkerWithLog(`/api/admin/reviews/${reviewId}`, token, "POST", {
+        status: action === "approve" ? "approved" : "rejected",
+      }, "Модерация отзыва");
+      toast.success(`Отзыв ${action === "approve" ? "одобрен" : "отклонен"}`);
+    } catch {
       toast.error("Ошибка");
     }
   };
 
-  const exportToExcel = () => {
-    const ws = XLSX.utils.json_to_sheet(orders);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Orders");
-    XLSX.writeFile(wb, "orders_export.xlsx");
+  const openReviewDialog = (review: Review) => {
+    setReviewDraft({ ...review });
+    setReviewDialogOpen(true);
+  };
+
+  const handleSaveReview = async () => {
+    if (!user || !reviewDraft) return;
+    try {
+      const token = await user.getIdToken();
+      await callWorkerWithLog(`/api/admin/reviews/${reviewDraft.id}`, token, "POST", {
+        text: reviewDraft.text,
+        rating: Math.min(5, Math.max(1, Number(reviewDraft.rating || 5))),
+        status: reviewDraft.status,
+        userName: reviewDraft.userName || "",
+      }, "Редактирование отзыва");
+      toast.success("Отзыв обновлен");
+      setReviewDialogOpen(false);
+    } catch {
+      toast.error("Ошибка обновления отзыва");
+    }
+  };
+
+  const openUserDialog = (userItem: UserProfile) => {
+    setUserDraft({ ...userItem });
+    setUserDialogOpen(true);
+  };
+
+  const getVipDiscountByLevel = (level: number) => {
+    if (level === 1) return settingsDraft.vipRules.vip1.discount;
+    if (level === 2) return settingsDraft.vipRules.vip2.discount;
+    if (level === 3) return settingsDraft.vipRules.vip3.discount;
+    return 0;
+  };
+
+  function getStatusBadge(value: boolean | null, okLabel: string, failLabel: string) {
+    if (value === null) {
+      return { label: "Проверка...", className: "bg-muted text-muted-foreground border-none" };
+    }
+    return value
+      ? { label: okLabel, className: "bg-emerald-500/10 text-emerald-500 border-none" }
+      : { label: failLabel, className: "bg-red-500/10 text-red-500 border-none" };
+  }
+
+  const handleSaveUser = async () => {
+    if (!user || !userDraft) return;
+    try {
+      const token = await user.getIdToken();
+      await callWorkerWithLog(`/api/admin/users/${userDraft.uid}`, token, "POST", {
+        isBanned: Boolean(userDraft.isBanned),
+        banReason: userDraft.banReason || "",
+        loyaltyLevel: Number(userDraft.loyaltyLevel || 0),
+        loyaltyDiscount: Number(userDraft.loyaltyDiscount || 0),
+      }, "Обновление клиента");
+      toast.success("Профиль клиента обновлен");
+      setUserDialogOpen(false);
+    } catch {
+      toast.error("Ошибка обновления клиента");
+    }
   };
 
   const seedDatabase = async () => {
+    if (!user) return;
     setIsSeeding(true);
     try {
-      const productsToSeed = [
-        {
-          name: "FreeStyle Libre 2 (RU)",
-          description: "Официальная российская версия. 14 дней работы, сигналы тревоги. Прямое подключение к смартфону через NFC.",
-          price: 4990,
-          imageUrl: "https://images.unsplash.com/photo-1584017911766-d451b3d0e843?auto=format&fit=crop&q=80&w=400",
-          inStock: true,
-          discountPercent: 0,
-          features: ["14 дней", "RU Версия", "NFC"],
-          costPrice: 3500
-        },
-        {
-          name: "FreeStyle Libre 3 Plus",
-          description: "Самый современный и компактный сенсор в мире. 15 дней работы. Передача данных по Bluetooth в реальном времени.",
-          price: 6490,
-          imageUrl: "https://images.unsplash.com/photo-1584017911766-d451b3d0e843?auto=format&fit=crop&q=80&w=400",
-          inStock: true,
-          discountPercent: 5,
-          features: ["15 дней", "Bluetooth", "Ультра-мини"],
-          costPrice: 4800
-        }
-      ];
-
-      for (const p of productsToSeed) {
-        await addDoc(collection(db, "products"), p);
-      }
-
-      await setDoc(doc(db, "settings", "config"), {
-        vipRules: {
-          vip1: { orders: 3, spent: 15000, discount: 5, label: "Постоянный клиент" },
-          vip2: { orders: 10, spent: 150000, discount: 7, label: "VIP Партнер" },
-          vip3: { orders: 25, spent: 350000, discount: 10, label: "Элита" }
-        },
-        checkoutFields: [
-          { id: "telegram", label: "Telegram Username", type: "text", required: false },
-          { id: "comment", label: "Комментарий", type: "text", required: false }
-        ]
-      });
-
+      const token = await user.getIdToken();
+      await callWorkerWithLog("/api/admin/seed", token, "POST", undefined, "Seed БД");
       toast.success("Данные успешно инициализированы!");
-    } catch (e) {
+    } catch {
       toast.error("Ошибка сидирования");
     } finally {
       setIsSeeding(false);
     }
   };
 
+  const openProductDialog = (product?: Product) => {
+    if (product) {
+      setEditingProduct(product);
+      setProductDraft({
+        name: product.name,
+        description: product.description,
+        price: product.price,
+        imageUrl: product.imageUrl,
+        inStock: product.inStock,
+        discountPercent: product.discountPercent,
+        featuresText: product.features.join(", "),
+        active: product.active,
+        costPrice: product.costPrice || 0,
+      });
+    } else {
+      setEditingProduct(null);
+      setProductDraft({
+        name: "",
+        description: "",
+        price: 0,
+        imageUrl: "",
+        inStock: true,
+        discountPercent: 0,
+        featuresText: "",
+        active: true,
+        costPrice: 0,
+      });
+    }
+    setProductDialogOpen(true);
+  };
+
+  const handleSaveProduct = async () => {
+    if (!user) return;
+    try {
+      const token = await user.getIdToken();
+      const payload = {
+        name: productDraft.name,
+        description: productDraft.description,
+        price: Number(productDraft.price || 0),
+        imageUrl: productDraft.imageUrl,
+        inStock: Boolean(productDraft.inStock),
+        discountPercent: Number(productDraft.discountPercent || 0),
+        features: productDraft.featuresText
+          .split(",")
+          .map(item => item.trim())
+          .filter(Boolean),
+        active: Boolean(productDraft.active),
+        costPrice: Number(productDraft.costPrice || 0),
+      };
+      if (editingProduct) {
+        await callWorkerWithLog(`/api/admin/products/${editingProduct.id}`, token, "PUT", payload, "Обновление товара");
+      } else {
+        await callWorkerWithLog("/api/admin/products", token, "POST", payload, "Создание товара");
+      }
+      toast.success("Товар сохранен");
+      setProductDialogOpen(false);
+    } catch {
+      toast.error("Ошибка сохранения товара");
+    }
+  };
+
+  const handleDeleteProduct = async (productId: string) => {
+    if (!user) return;
+    try {
+      const token = await user.getIdToken();
+      await callWorkerWithLog(`/api/admin/products/${productId}`, token, "DELETE", undefined, "Удаление товара");
+      toast.success("Товар удален");
+    } catch {
+      toast.error("Ошибка удаления товара");
+    }
+  };
+
+  const openPurchaseDialog = (purchase?: Purchase) => {
+    if (purchase) {
+      setEditingPurchase(purchase);
+      const dateValue = toDateValue(purchase.date) || new Date();
+      setPurchaseDraft({
+        productId: purchase.productId,
+        qty: purchase.qty,
+        totalAmount: purchase.totalAmount,
+        comment: purchase.comment || "",
+        date: toMskInputDate(dateValue),
+      });
+    } else {
+      setEditingPurchase(null);
+      setPurchaseDraft({
+        productId: products[0]?.id || "",
+        qty: 1,
+        totalAmount: 0,
+        comment: "",
+        date: toMskInputDate(),
+      });
+    }
+    setPurchaseDialogOpen(true);
+  };
+
+  const openSaleDialog = (sale?: Sale) => {
+    if (sale) {
+      setEditingSale(sale);
+      const dateValue = toDateValue(sale.date) || new Date();
+      setSaleDraft({
+        productId: sale.productId,
+        qty: sale.qty,
+        totalAmount: sale.totalAmount,
+        comment: sale.comment || "",
+        date: toMskInputDate(dateValue),
+      });
+    } else {
+      setEditingSale(null);
+      setSaleDraft({
+        productId: products[0]?.id || "",
+        qty: 1,
+        totalAmount: 0,
+        comment: "",
+        date: toMskInputDate(),
+      });
+    }
+    setSaleDialogOpen(true);
+  };
+
+  const handleSavePurchase = async () => {
+    if (!user) return;
+    try {
+      const token = await user.getIdToken();
+      const payload = {
+        productId: purchaseDraft.productId,
+        qty: Number(purchaseDraft.qty || 0),
+        totalAmount: Number(purchaseDraft.totalAmount || 0),
+        comment: purchaseDraft.comment || "",
+        date: purchaseDraft.date,
+      };
+      if (editingPurchase) {
+        await callWorkerWithLog(`/api/admin/purchases/${editingPurchase.id}`, token, "PUT", payload, "Обновление закупки");
+      } else {
+        await callWorkerWithLog("/api/admin/purchases", token, "POST", payload, "Создание закупки");
+      }
+      toast.success("Закупка сохранена");
+      setPurchaseDialogOpen(false);
+    } catch {
+      toast.error("Ошибка сохранения закупки");
+    }
+  };
+
+  const handleSaveSale = async () => {
+    if (!user) return;
+    try {
+      const token = await user.getIdToken();
+      const payload = {
+        productId: saleDraft.productId,
+        qty: Number(saleDraft.qty || 0),
+        totalAmount: Number(saleDraft.totalAmount || 0),
+        comment: saleDraft.comment || "",
+        date: saleDraft.date,
+      };
+      if (editingSale) {
+        await callWorkerWithLog(`/api/admin/sales/${editingSale.id}`, token, "PUT", payload, "Обновление продажи");
+      } else {
+        await callWorkerWithLog("/api/admin/sales", token, "POST", payload, "Создание продажи");
+      }
+      toast.success("Продажа сохранена");
+      setSaleDialogOpen(false);
+    } catch {
+      toast.error("Ошибка сохранения продажи");
+    }
+  };
+
+  const handleDeletePurchase = async (purchaseId: string) => {
+    if (!user) return;
+    try {
+      const token = await user.getIdToken();
+      await callWorkerWithLog(`/api/admin/purchases/${purchaseId}`, token, "DELETE", undefined, "Удаление закупки");
+      toast.success("Закупка удалена");
+    } catch {
+      toast.error("Ошибка удаления закупки");
+    }
+  };
+
+  const handleDeleteSale = async (saleId: string) => {
+    if (!user) return;
+    try {
+      const token = await user.getIdToken();
+      await callWorkerWithLog(`/api/admin/sales/${saleId}`, token, "DELETE", undefined, "Удаление продажи");
+      toast.success("Продажа удалена");
+    } catch {
+      toast.error("Ошибка удаления продажи");
+    }
+  };
+
+  const handleSaveSettings = async () => {
+    if (!user) return;
+    try {
+      const token = await user.getIdToken();
+      const seen = new Set<string>();
+      const fields = settingsDraft.orderForm.fields
+        .map(field => ({
+          ...field,
+          id: field.id.trim(),
+          label: field.label.trim(),
+          placeholder: field.placeholder?.trim() || "",
+        }))
+        .filter(field => field.id && field.label)
+        .filter(field => !RESERVED_ORDER_FIELD_IDS.has(field.id))
+        .filter(field => {
+          if (seen.has(field.id)) return false;
+          seen.add(field.id);
+          return true;
+        });
+      const serviceSeen = new Set<string>();
+      const deliveryServices = settingsDraft.deliveryServices
+        .map((service, index) => ({
+          ...service,
+          id: service.id.trim(),
+          label: service.label.trim(),
+          sortOrder: Number(service.sortOrder || index + 1),
+        }))
+        .filter(service => service.id && service.label)
+        .filter(service => {
+          if (serviceSeen.has(service.id)) return false;
+          serviceSeen.add(service.id);
+          return true;
+        });
+      const media = {
+        heroImageUrl: settingsDraft.media.heroImageUrl.trim(),
+        guideImageUrl: settingsDraft.media.guideImageUrl.trim(),
+      };
+      await callWorkerWithLog("/api/admin/settings", token, "POST", {
+        ...settingsDraft,
+        deliveryServices,
+        orderForm: {
+          ...settingsDraft.orderForm,
+          fields,
+        },
+        media,
+      }, "Настройки");
+      toast.success("Настройки сохранены");
+    } catch {
+      toast.error("Ошибка сохранения настроек");
+    }
+  };
+
+  const updateVipRule = (tier: "vip1" | "vip2" | "vip3", field: keyof SettingsConfig["vipRules"]["vip1"], value: string | number) => {
+    setSettingsDraft(prev => ({
+      ...prev,
+      vipRules: {
+        ...prev.vipRules,
+        [tier]: {
+          ...prev.vipRules[tier],
+          [field]: value,
+        },
+      },
+    }));
+  };
+
+  const addOrderField = () => {
+    setSettingsDraft(prev => ({
+      ...prev,
+      orderForm: {
+        ...prev.orderForm,
+        fields: [
+          ...prev.orderForm.fields,
+          {
+            id: `field_${Date.now()}`,
+            label: "Новый вопрос",
+            type: "text",
+            required: false,
+            placeholder: "",
+          },
+        ],
+      },
+    }));
+  };
+
+  const updateOrderField = (index: number, patch: Partial<SettingsConfig["orderForm"]["fields"][number]>) => {
+    setSettingsDraft(prev => ({
+      ...prev,
+      orderForm: {
+        ...prev.orderForm,
+        fields: prev.orderForm.fields.map((field, i) => (i === index ? { ...field, ...patch } : field)),
+      },
+    }));
+  };
+
+  const removeOrderField = (index: number) => {
+    setSettingsDraft(prev => ({
+      ...prev,
+      orderForm: {
+        ...prev.orderForm,
+        fields: prev.orderForm.fields.filter((_, i) => i !== index),
+      },
+    }));
+  };
+
+  const addDeliveryService = () => {
+    setSettingsDraft(prev => ({
+      ...prev,
+      deliveryServices: [
+        ...prev.deliveryServices,
+        {
+          id: `service_${Date.now()}`,
+          label: "Новая служба",
+          active: true,
+          sortOrder: prev.deliveryServices.length + 1,
+        },
+      ],
+    }));
+  };
+
+  const updateDeliveryService = (index: number, patch: Partial<SettingsConfig["deliveryServices"][number]>) => {
+    setSettingsDraft(prev => ({
+      ...prev,
+      deliveryServices: prev.deliveryServices.map((service, i) => (i === index ? { ...service, ...patch } : service)),
+    }));
+  };
+
+  const removeDeliveryService = (index: number) => {
+    setSettingsDraft(prev => ({
+      ...prev,
+      deliveryServices: prev.deliveryServices.filter((_, i) => i !== index),
+    }));
+  };
+
   return (
-    <div className="min-h-screen bg-muted/30">
+    <div className="min-h-screen">
       <Navbar />
-      <div className="container mx-auto px-4 pt-24 pb-12">
+      <div className="container pt-24 pb-12">
         {/* Header Stats */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           <Card className="bg-background/60 backdrop-blur-xl border-white/20 shadow-xl rounded-3xl overflow-hidden">
             <CardContent className="p-6 flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground mb-1 uppercase tracking-wider">Выручка</p>
-                <h3 className="text-3xl font-black">{stats.totalSales.toLocaleString()} ₽</h3>
-                <p className="text-xs text-emerald-500 mt-1 flex items-center gap-1">
-                  <ArrowUpRight className="w-3 h-3" /> +12% к прошлому месяцу
+                <h3 className={`text-3xl font-black ${stats.totalSales >= 0 ? "text-emerald-500" : "text-red-500"}`}>
+                  {stats.totalSales.toLocaleString()} ₽
+                </h3>
+                <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+                  Текущий месяц: продажи − закупки
                 </p>
               </div>
               <div className="w-14 h-14 rounded-2xl bg-emerald-500/10 flex items-center justify-center text-emerald-500">
@@ -325,11 +1380,11 @@ export default function AdminPage() {
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-8">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-            <TabsList className="bg-background/60 backdrop-blur-xl border-white/20 p-1.5 h-auto rounded-2xl gap-1">
+            <TabsList className="bg-background/60 backdrop-blur-xl border-white/20 p-1.5 h-auto rounded-2xl gap-2 flex flex-wrap lg:flex-nowrap overflow-x-auto lg:overflow-x-visible">
               <TabsTrigger value="dashboard" className="rounded-xl px-5 py-2.5 gap-2 data-[state=active]:bg-primary data-[state=active]:text-white transition-all"><BarChart3 className="w-4 h-4" /> Дашборд</TabsTrigger>
               <TabsTrigger value="orders" className="rounded-xl px-5 py-2.5 gap-2 data-[state=active]:bg-primary data-[state=active]:text-white transition-all"><ShoppingCart className="w-4 h-4" /> Заказы</TabsTrigger>
-              <TabsTrigger value="products" className="rounded-xl px-5 py-2.5 gap-2 data-[state=active]:bg-primary data-[state=active]:text-white transition-all"><Package className="w-4 h-4" /> Товары</TabsTrigger>
               <TabsTrigger value="finance" className="rounded-xl px-5 py-2.5 gap-2 data-[state=active]:bg-primary data-[state=active]:text-white transition-all"><Wallet className="w-4 h-4" /> Финансы</TabsTrigger>
+              <TabsTrigger value="products" className="rounded-xl px-5 py-2.5 gap-2 data-[state=active]:bg-primary data-[state=active]:text-white transition-all"><Package className="w-4 h-4" /> Товары</TabsTrigger>
               <TabsTrigger value="users" className="rounded-xl px-5 py-2.5 gap-2 data-[state=active]:bg-primary data-[state=active]:text-white transition-all"><Users className="w-4 h-4" /> Клиенты</TabsTrigger>
               <TabsTrigger value="reviews" className="rounded-xl px-5 py-2.5 gap-2 data-[state=active]:bg-primary data-[state=active]:text-white transition-all relative">
                 <MessageSquare className="w-4 h-4" /> Отзывы
@@ -340,6 +1395,8 @@ export default function AdminPage() {
                 )}
               </TabsTrigger>
               <TabsTrigger value="settings" className="rounded-xl px-5 py-2.5 gap-2 data-[state=active]:bg-primary data-[state=active]:text-white transition-all"><Settings className="w-4 h-4" /> Настройки</TabsTrigger>
+              <TabsTrigger value="status" className="rounded-xl px-5 py-2.5 gap-2 data-[state=active]:bg-primary data-[state=active]:text-white transition-all"><Activity className="w-4 h-4" /> Статусы</TabsTrigger>
+              <TabsTrigger value="logs" className="rounded-xl px-5 py-2.5 gap-2 data-[state=active]:bg-primary data-[state=active]:text-white transition-all"><ClipboardList className="w-4 h-4" /> Логи</TabsTrigger>
             </TabsList>
 
             <div className="flex items-center gap-3 w-full md:w-auto">
@@ -353,26 +1410,26 @@ export default function AdminPage() {
                 />
               </div>
               <Button variant="outline" size="icon" className="h-11 w-11 rounded-xl bg-background/60 border-white/20"><Filter className="w-4 h-4" /></Button>
-              <Button onClick={exportToExcel} variant="outline" size="icon" className="h-11 w-11 rounded-xl bg-background/60 border-white/20"><Download className="w-4 h-4" /></Button>
             </div>
           </div>
 
-          <TabsContent value="dashboard" className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <div className="grid md:grid-cols-2 gap-8">
+          <TabsContent value="dashboard">
+            <motion.div {...tabMotion} className="space-y-8">
+              <div className="grid md:grid-cols-2 gap-8">
               <Card className="rounded-[2.5rem] border-white/20 shadow-2xl overflow-hidden bg-background/40 backdrop-blur-xl">
                 <CardHeader>
-                  <CardTitle>Активность продаж</CardTitle>
-                  <CardDescription>Статистика за последние 6 месяцев</CardDescription>
+                  <CardTitle>Продажи (шт.)</CardTitle>
+                  <CardDescription>Количество проданных сенсоров за 6 месяцев</CardDescription>
                 </CardHeader>
-                <CardContent className="h-[350px]">
+                <CardContent className="h-[260px] md:h-[350px]">
                   <Line 
                     data={{
-                      labels: ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн'],
+                      labels: salesByMonth.labels,
                       datasets: [{
-                        label: 'Продажи',
-                        data: [45000, 52000, 48000, 61000, 55000, 67000],
-                        borderColor: '#3b82f6',
-                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        label: 'Продано (шт.)',
+                        data: salesByMonth.data,
+                        borderColor: '#10b981',
+                        backgroundColor: 'rgba(16, 185, 129, 0.12)',
                         fill: true,
                         tension: 0.4
                       }]
@@ -384,15 +1441,15 @@ export default function AdminPage() {
               <Card className="rounded-[2.5rem] border-white/20 shadow-2xl overflow-hidden bg-background/40 backdrop-blur-xl">
                 <CardHeader>
                   <CardTitle>Популярность моделей</CardTitle>
-                  <CardDescription>Распределение заказов по товарам</CardDescription>
+                  <CardDescription>Распределение продаж по товарам</CardDescription>
                 </CardHeader>
-                <CardContent className="h-[350px]">
+                <CardContent className="h-[260px] md:h-[350px]">
                   <Bar 
                     data={{
-                      labels: products.map(p => p.name.split(' ')[2]),
+                      labels: productPopularity.labels,
                       datasets: [{
-                        label: 'Заказано',
-                        data: [120, 85, 150],
+                        label: 'Продано (шт.)',
+                        data: productPopularity.data,
                         backgroundColor: ['#3b82f6', '#10b981', '#f59e0b'],
                         borderRadius: 12
                       }]
@@ -402,190 +1459,957 @@ export default function AdminPage() {
                 </CardContent>
               </Card>
             </div>
+          </motion.div>
           </TabsContent>
 
-          <TabsContent value="orders" className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <TabsContent value="orders">
+            <motion.div {...tabMotion} className="space-y-8">
+            <Card className="rounded-[2.5rem] border-white/20 shadow-2xl overflow-hidden bg-background/40 backdrop-blur-xl">
+              <CardHeader className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <div>
+                  <CardTitle>Заказы</CardTitle>
+                  <CardDescription>Управление заказами и статусами</CardDescription>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    variant={orderListTab === "active" ? "default" : "outline"}
+                    className="rounded-xl"
+                    onClick={() => setOrderListTab("active")}
+                  >
+                    Активные ({activeOrdersCount})
+                  </Button>
+                  <Button
+                    variant={orderListTab === "archive" ? "default" : "outline"}
+                    className="rounded-xl"
+                    onClick={() => setOrderListTab("archive")}
+                  >
+                    Архив ({archiveOrdersCount})
+                  </Button>
+                </div>
+              </CardHeader>
+              <AnimatePresence mode="wait">
+                <motion.div key={orderListTab} {...panelMotion}>
+                  <Table>
+                    <TableHeader className="bg-muted/50">
+                      <TableRow>
+                        <TableHead className="py-6 pl-8">Заказ / Дата</TableHead>
+                        <TableHead>Покупатель</TableHead>
+                        <TableHead>Состав</TableHead>
+                        <TableHead>Сумма</TableHead>
+                        <TableHead>Управление</TableHead>
+                        <TableHead className="pr-8">Статус</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredOrders.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={6} className="h-64 text-center text-muted-foreground">
+                            Нет заказов по текущему фильтру
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        filteredOrders.map((order) => {
+                          const stockIssue = getOrderStockIssue(order);
+                          const statusInfo = getOrderStatusInfo(order.status);
+                          const statusValue = order.status;
+                          const itemsPreview = order.items.slice(0, 2);
+                          const extraItems = Math.max(0, order.items.length - itemsPreview.length);
+                          return (
+                            <TableRow key={order.id} className="hover:bg-muted/30 transition-colors">
+                              <TableCell className="py-6 pl-8">
+                                <div className="text-[13px] font-semibold uppercase tracking-widest text-foreground/80">#{order.id.slice(-6)}</div>
+                                <div className="text-xs text-muted-foreground mt-1">
+                                  {formatTimestamp(order.createdAt, "ru-RU", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) || "—"}
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <div className="font-bold">{order.name || 'Аноним'}</div>
+                                <div className="text-xs text-muted-foreground mt-0.5">{order.phoneE164 || order.phone || "—"}</div>
+                                <div className="text-xs text-muted-foreground">{formatTelegramValue(order.telegram)}</div>
+                              </TableCell>
+                              <TableCell>
+                                {order.items.length === 0 ? (
+                                  <span className="text-xs text-muted-foreground">—</span>
+                                ) : (
+                                  <div className="space-y-1">
+                                    {itemsPreview.map((it, idx) => (
+                                      <div key={`${it.productId}-${idx}`} className="flex items-center gap-2 text-xs">
+                                        <span className="font-semibold text-foreground/80 line-clamp-1 max-w-[180px]">{it.name}</span>
+                                        <span className="text-[11px] font-semibold text-muted-foreground">x{it.quantity}</span>
+                                      </div>
+                                    ))}
+                                    {extraItems > 0 && (
+                                      <div className="text-[10px] text-muted-foreground">+ еще {extraItems}</div>
+                                    )}
+                                  </div>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                <div className="font-black text-primary">{order.totalPrice.toLocaleString()} ₽</div>
+                                <div className="text-[10px] text-muted-foreground">{order.items.length} поз.</div>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex items-center gap-2">
+                                  <Dialog>
+                                    <DialogTrigger asChild>
+                                      <Button variant="ghost" className="h-9 px-3 rounded-xl gap-2">
+                                        <Eye className="w-4 h-4" /> Детали
+                                      </Button>
+                                    </DialogTrigger>
+                                    <DialogContent className="max-w-2xl rounded-[2rem]">
+                                      <DialogHeader>
+                                        <DialogTitle className="text-2xl font-black">Детали заказа #{order.id.slice(-6)}</DialogTitle>
+                                        <DialogDescription className="text-muted-foreground">
+                                          Информация о составе заказа и параметрах доставки.
+                                        </DialogDescription>
+                                      </DialogHeader>
+                                      <div className="grid md:grid-cols-2 gap-8 py-6">
+                                        <div className="space-y-6">
+                                          <div>
+                                            <h4 className="text-xs font-black uppercase text-muted-foreground mb-3">Товары</h4>
+                                            <div className="space-y-3">
+                                              {order.items.map((it, i) => (
+                                                <div key={i} className="flex justify-between items-center bg-muted/30 p-3 rounded-2xl border">
+                                                  <span className="text-sm font-bold">{it.name}</span>
+                                                  <span className="text-xs font-black bg-primary/10 text-primary px-2 py-1 rounded-lg">x{it.quantity}</span>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          </div>
+                                        </div>
+                                        <div className="space-y-6">
+                                          <div>
+                                            <h4 className="text-xs font-black uppercase text-muted-foreground mb-3">Клиент</h4>
+                                            <div className="bg-muted/30 p-4 rounded-2xl border space-y-2 text-sm">
+                                              <p><span className="text-muted-foreground">Имя:</span> <b>{order.name || "—"}</b></p>
+                                              <p><span className="text-muted-foreground">Телефон:</span> <b>{order.phoneE164 || order.phone || "—"}</b></p>
+                                              <p><span className="text-muted-foreground">TG:</span> <b>{formatTelegramValue(order.telegram)}</b></p>
+                                              {order.userEmail && (
+                                                <p><span className="text-muted-foreground">Email:</span> <b>{order.userEmail}</b></p>
+                                              )}
+                                            </div>
+                                          </div>
+                                          <div>
+                                            <h4 className="text-xs font-black uppercase text-muted-foreground mb-3">Получение</h4>
+                                            <div className="bg-muted/30 p-4 rounded-2xl border space-y-2 text-sm">
+                                              <p><span className="text-muted-foreground">Метод:</span> <b>{order.deliveryMethod === 'delivery' ? 'Доставка' : 'Самовывоз'}</b></p>
+                                              {order.deliveryMethod === "delivery" && (
+                                                <>
+                                                <p><span className="text-muted-foreground">Служба:</span> <b>{resolveDeliveryServiceLabel(order.deliveryService) || "—"}</b></p>
+                                                  <p><span className="text-muted-foreground">Город:</span> <b>{order.city || "—"}</b></p>
+                                                </>
+                                              )}
+                                            </div>
+                                          </div>
+                                          {order.customFields && Object.keys(order.customFields).length > 0 && (
+                                            <div>
+                                              <h4 className="text-xs font-black uppercase text-muted-foreground mb-3">Доп. поля</h4>
+                                              <div className="bg-muted/30 p-4 rounded-2xl border space-y-2 text-sm">
+                                                {Object.entries(order.customFields).map(([key, value]) => (
+                                                  <p key={key}><span className="text-muted-foreground">{key}:</span> <b>{value || "—"}</b></p>
+                                                ))}
+                                              </div>
+                                            </div>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </DialogContent>
+                                  </Dialog>
+                                  {order.status !== "delivered" && (
+                                    <Button variant="ghost" className="h-9 px-3 rounded-xl gap-2" onClick={() => openOrderEditDialog(order)}>
+                                      <Pencil className="w-4 h-4" /> Изменить
+                                    </Button>
+                                  )}
+                                </div>
+                              </TableCell>
+                              <TableCell className="pr-8">
+                                <Select value={statusValue} onValueChange={(value) => handleUpdateOrderStatus(order.id, value, stockIssue)}>
+                                  <SelectTrigger className={`h-9 min-w-[140px] rounded-full px-3 text-[11px] font-bold border border-white/10 ${statusInfo.badgeClass}`}>
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent className="rounded-2xl border-white/10 bg-background/90 backdrop-blur-xl shadow-2xl">
+                                    {["new", "processing", "delivered", "cancelled"].map((statusOption) => {
+                                      const info = getOrderStatusInfo(statusOption);
+                                      return (
+                                        <SelectItem
+                                          key={statusOption}
+                                          value={statusOption}
+                                          className="data-[highlighted]:bg-muted/40 data-[state=checked]:bg-transparent"
+                                        >
+                                          <span className={`text-[11px] font-semibold ${info.textClass}`}>{info.label}</span>
+                                        </SelectItem>
+                                      );
+                                    })}
+                                  </SelectContent>
+                                </Select>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })
+                      )}
+                    </TableBody>
+                  </Table>
+                </motion.div>
+              </AnimatePresence>
+            </Card>
+
+            <Dialog open={orderEditOpen} onOpenChange={(open) => {
+              setOrderEditOpen(open);
+              if (!open) setEditingOrder(null);
+            }}>
+              <DialogContent className="rounded-[2.5rem] max-w-3xl">
+                <DialogHeader>
+                  <DialogTitle className="text-2xl font-black">
+                    Редактировать заказ {editingOrder ? `#${editingOrder.id.slice(-6)}` : ""}
+                  </DialogTitle>
+                  <DialogDescription className="text-muted-foreground">
+                    Обновите состав заказа и параметры получения.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-6 py-4">
+                  <div className="space-y-3">
+                    <p className="text-xs font-black uppercase text-muted-foreground tracking-widest">Состав заказа</p>
+                    <div className="space-y-3">
+                      {orderDraft.items.map((item, index) => (
+                        <div key={`${item.productId}-${index}`} className="grid gap-3 md:grid-cols-[1fr_140px_auto] items-center">
+                          <Select
+                            value={item.productId}
+                            onValueChange={(value) => updateOrderItem(index, { productId: value })}
+                          >
+                            <SelectTrigger className="h-12 w-full rounded-xl bg-muted/40 border">
+                              <SelectValue placeholder="Выберите модель" />
+                            </SelectTrigger>
+                            <SelectContent className="rounded-2xl border-white/10 bg-background/80 backdrop-blur-xl shadow-2xl">
+                              {products.length === 0 ? (
+                                <SelectItem value="no-products" disabled>Нет товаров</SelectItem>
+                              ) : (
+                                products.map((product) => (
+                                  <SelectItem key={product.id} value={product.id}>{product.name}</SelectItem>
+                                ))
+                              )}
+                            </SelectContent>
+                          </Select>
+                          <NumericInput
+                            value={Number(item.quantity || 0)}
+                            onValueChange={(value) => updateOrderItem(index, { quantity: Math.max(1, Math.round(value || 0)) })}
+                            className="h-12 rounded-xl"
+                          />
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-12 w-12 rounded-xl text-destructive hover:bg-destructive/10"
+                            onClick={() => removeOrderItem(index)}
+                            disabled={orderDraft.items.length <= 1}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                    <Button variant="outline" className="h-11 rounded-xl" onClick={addOrderItem}>
+                      + Добавить позицию
+                    </Button>
+                  </div>
+
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Способ получения</Label>
+                      <Select
+                        value={orderDraft.deliveryMethod}
+                        onValueChange={(value) => setOrderDraft((prev) => ({
+                          ...prev,
+                          deliveryMethod: value as "pickup" | "delivery",
+                          deliveryService: value === "pickup" ? "" : prev.deliveryService,
+                          city: value === "pickup" ? "" : prev.city,
+                        }))}
+                      >
+                        <SelectTrigger className="h-12 w-full rounded-xl bg-muted/40 border">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="rounded-2xl border-white/10 bg-background/80 backdrop-blur-xl shadow-2xl">
+                          <SelectItem value="pickup">Самовывоз</SelectItem>
+                          <SelectItem value="delivery">Доставка</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Telegram</Label>
+                      <Input
+                        value={orderDraft.telegram}
+                        onChange={(e) => setOrderDraft((prev) => ({ ...prev, telegram: e.target.value }))}
+                        className="h-12 rounded-xl"
+                        placeholder="@username"
+                      />
+                    </div>
+                  </div>
+
+                  {orderDraft.deliveryMethod === "delivery" && (
+                    <div className="grid md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Служба доставки</Label>
+                        <Select
+                          value={orderDraft.deliveryService}
+                          onValueChange={(value) => setOrderDraft((prev) => ({ ...prev, deliveryService: value }))}
+                        >
+                          <SelectTrigger className="h-12 w-full rounded-xl bg-muted/40 border">
+                            <SelectValue placeholder="Выберите службу" />
+                          </SelectTrigger>
+                          <SelectContent className="rounded-2xl border-white/10 bg-background/80 backdrop-blur-xl shadow-2xl">
+                            {settingsDraft.deliveryServices.filter((service) => service.active).length === 0 ? (
+                              <SelectItem value="no-services" disabled>Нет служб доставки</SelectItem>
+                            ) : (
+                              settingsDraft.deliveryServices
+                                .filter((service) => service.active)
+                                .map((service) => (
+                                  <SelectItem key={service.id} value={service.id}>{service.label}</SelectItem>
+                                ))
+                            )}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Город</Label>
+                        <Input
+                          value={orderDraft.city}
+                          onChange={(e) => setOrderDraft((prev) => ({ ...prev, city: e.target.value }))}
+                          className="h-12 rounded-xl"
+                          placeholder="Город доставки"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setOrderEditOpen(false)}>Отмена</Button>
+                  <Button onClick={handleSaveOrderEdit} disabled={!canSaveOrderEdit}>Сохранить</Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+            </motion.div>
+          </TabsContent>
+
+          <TabsContent value="products">
+            <motion.div {...tabMotion} className="space-y-8">
+            <Card className="rounded-[2.5rem] border-white/20 shadow-2xl overflow-hidden bg-background/40 backdrop-blur-xl">
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle>Товары</CardTitle>
+                  <CardDescription>Управление ассортиментом витрины</CardDescription>
+                </div>
+                <Button className="rounded-2xl h-11 px-6 gap-2" onClick={() => openProductDialog()}>
+                  <Plus className="w-4 h-4" /> Добавить товар
+                </Button>
+              </CardHeader>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="pl-8">Название</TableHead>
+                    <TableHead>Цена</TableHead>
+                    <TableHead>Статус</TableHead>
+                    <TableHead>Скидка</TableHead>
+                    <TableHead className="pr-8 text-right">Действия</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredProducts.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={5} className="h-64 text-center text-muted-foreground">
+                        Товары не найдены
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    filteredProducts.map(product => (
+                      <TableRow key={product.id}>
+                        <TableCell className="pl-8">
+                          <div className="font-bold">{product.name}</div>
+                          <div className="text-xs text-muted-foreground line-clamp-1">{product.description}</div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="font-black text-primary">{product.price.toLocaleString()} ₽</div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge className={product.inStock ? "bg-emerald-500/10 text-emerald-500 border-none" : "bg-muted text-muted-foreground border-none"}>
+                            {product.inStock ? "В наличии" : "Нет в наличии"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {product.discountPercent > 0 ? (
+                            <Badge className="bg-orange-500/10 text-orange-500 border-none">-{product.discountPercent}%</Badge>
+                          ) : (
+                            <Badge className="bg-muted text-muted-foreground border-none">—</Badge>
+                          )}
+                        </TableCell>
+                        <TableCell className="pr-8 text-right">
+                          <div className="flex justify-end gap-2">
+                            <Button size="icon" variant="ghost" className="h-9 w-9 rounded-xl" onClick={() => openProductDialog(product)}>
+                              <Pencil className="w-4 h-4" />
+                            </Button>
+                            <Button size="icon" variant="ghost" className="h-9 w-9 rounded-xl text-destructive hover:bg-destructive/10" onClick={() => handleDeleteProduct(product.id)}>
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </Card>
+
+            <Dialog open={productDialogOpen} onOpenChange={setProductDialogOpen}>
+              <DialogContent className="rounded-[2rem] max-w-2xl">
+                <DialogHeader>
+                  <DialogTitle>{editingProduct ? "Редактировать товар" : "Новый товар"}</DialogTitle>
+                  <DialogDescription className="text-muted-foreground">
+                    Заполните характеристики и сохраните изменения.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="grid md:grid-cols-2 gap-6 py-4">
+                  <div className="space-y-2">
+                    <Label>Название</Label>
+                    <Input value={productDraft.name} onChange={(e) => setProductDraft({ ...productDraft, name: e.target.value })} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Цена (₽)</Label>
+                    <NumericInput value={productDraft.price} onValueChange={(value) => setProductDraft({ ...productDraft, price: value })} />
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <Label>Описание</Label>
+                    <Input value={productDraft.description} onChange={(e) => setProductDraft({ ...productDraft, description: e.target.value })} />
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <Label>URL изображения</Label>
+                    <Input value={productDraft.imageUrl} onChange={(e) => setProductDraft({ ...productDraft, imageUrl: e.target.value })} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Скидка (%)</Label>
+                    <NumericInput value={productDraft.discountPercent} onValueChange={(value) => setProductDraft({ ...productDraft, discountPercent: value })} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Себестоимость (₽)</Label>
+                    <NumericInput value={productDraft.costPrice} onValueChange={(value) => setProductDraft({ ...productDraft, costPrice: value })} />
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <Label>Фичи (через запятую)</Label>
+                    <Input value={productDraft.featuresText} onChange={(e) => setProductDraft({ ...productDraft, featuresText: e.target.value })} />
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <input type="checkbox" checked={productDraft.inStock} onChange={(e) => setProductDraft({ ...productDraft, inStock: e.target.checked })} />
+                    <span className="text-sm">В наличии</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <input type="checkbox" checked={productDraft.active} onChange={(e) => setProductDraft({ ...productDraft, active: e.target.checked })} />
+                    <span className="text-sm">Активный товар</span>
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setProductDialogOpen(false)}>Отмена</Button>
+                  <Button onClick={handleSaveProduct}>Сохранить</Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+            </motion.div>
+          </TabsContent>
+
+          <TabsContent value="finance">
+            <motion.div {...tabMotion} className="space-y-8">
+            <div className="grid lg:grid-cols-3 gap-6">
+              <Card className="lg:col-span-2 rounded-[2.5rem] border-white/20 shadow-2xl bg-background/40 backdrop-blur-xl">
+                <CardHeader>
+                  <CardTitle>Финансы за {currentMonthLabel}</CardTitle>
+                  <CardDescription>Текущий месяц и ключевые метрики</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="grid md:grid-cols-3 gap-4">
+                    <div className="rounded-2xl border bg-muted/30 p-4">
+                      <p className="text-[10px] font-bold uppercase text-muted-foreground">Выручка</p>
+                      <p className="text-2xl font-black text-emerald-500">{monthlyFinance.current.sales.toLocaleString()} ₽</p>
+                    </div>
+                    <div className="rounded-2xl border bg-muted/30 p-4">
+                      <p className="text-[10px] font-bold uppercase text-muted-foreground">Закупки</p>
+                      <p className="text-2xl font-black text-red-500">{monthlyFinance.current.purchases.toLocaleString()} ₽</p>
+                    </div>
+                    <div className="rounded-2xl border bg-muted/30 p-4">
+                      <p className="text-[10px] font-bold uppercase text-muted-foreground">Чистая прибыль</p>
+                      <p className={`text-2xl font-black ${currentProfit >= 0 ? "text-emerald-500" : "text-red-500"}`}>
+                        {currentProfit.toLocaleString()} ₽
+                      </p>
+                    </div>
+                  </div>
+                  <div className="grid md:grid-cols-3 gap-4">
+                    <div className="rounded-2xl border bg-muted/30 p-4">
+                      <p className="text-[10px] font-bold uppercase text-muted-foreground">Продано (шт.)</p>
+                      <p className="text-xl font-black">{monthlyFinance.current.soldQty}</p>
+                    </div>
+                    <div className="rounded-2xl border bg-muted/30 p-4">
+                      <p className="text-[10px] font-bold uppercase text-muted-foreground">Закуплено (шт.)</p>
+                      <p className="text-xl font-black">{monthlyFinance.current.purchasedQty}</p>
+                    </div>
+                    <div className="rounded-2xl border bg-muted/30 p-4">
+                      <p className="text-[10px] font-bold uppercase text-muted-foreground">Остаток (шт.)</p>
+                      <p className="text-xl font-black">{totals.totalStock}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="rounded-[2.5rem] border-white/20 shadow-2xl bg-background/40 backdrop-blur-xl">
+                <CardHeader>
+                  <CardTitle>Склад</CardTitle>
+                  <CardDescription>Остатки по товарам</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4 max-h-[260px] overflow-y-auto">
+                  {inventorySorted.length === 0 ? (
+                    <div className="text-sm text-muted-foreground">Данные появятся после первых операций.</div>
+                  ) : (
+                    inventorySorted.map((item) => (
+                      <div key={item.productId} className="flex items-center justify-between rounded-2xl border bg-muted/30 px-4 py-3">
+                        <div>
+                          <p className="text-sm font-semibold">{item.name}</p>
+                          <p className="text-[10px] text-muted-foreground">Закуплено: {item.purchased} • Продано: {item.sold}</p>
+                        </div>
+                        <Badge className={item.stock >= 0 ? "bg-emerald-500/10 text-emerald-500 border-none" : "bg-red-500/10 text-red-500 border-none"}>
+                          {item.stock} шт.
+                        </Badge>
+                      </div>
+                    ))
+                  )}
+                </CardContent>
+              </Card>
+              </div>
+
+            <Card className="rounded-[2.5rem] border-white/20 shadow-2xl bg-background/40 backdrop-blur-xl">
+              <CardHeader className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+                <div className="space-y-2">
+                  <div>
+                    <CardTitle>Сводка по месяцам</CardTitle>
+                    <CardDescription>Выручка, закупки и прибыль за последние 6 месяцев</CardDescription>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                    <span className="flex items-center gap-2">
+                      <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                      Выручка
+                    </span>
+                    <span className="flex items-center gap-2">
+                      <span className="h-2 w-2 rounded-full bg-red-500" />
+                      Закупки
+                    </span>
+                    <span className="flex items-center gap-2">
+                      <span className="h-2 w-2 rounded-full bg-primary" />
+                      Прибыль
+                    </span>
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-muted/30 px-5 py-4 text-right">
+                  <p className="text-[10px] font-bold uppercase text-muted-foreground">Чистая прибыль • 6 мес.</p>
+                  <p className={`text-2xl font-black ${sixMonthProfit >= 0 ? "text-emerald-500" : "text-red-500"}`}>
+                    {sixMonthProfit.toLocaleString()} ₽
+                  </p>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {monthlyFinance.series.map((item) => {
+                    const isCurrent = item.key === monthlyFinance.currentKey;
+                    return (
+                      <div
+                        key={item.key}
+                        className={`rounded-3xl border px-5 py-4 bg-muted/20 ${isCurrent ? "border-primary/30 bg-primary/5 shadow-lg" : "border-white/10"}`}
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div className="flex items-center gap-3">
+                            <p className="text-[11px] font-black uppercase tracking-widest text-muted-foreground">{item.label}</p>
+                            {isCurrent && <Badge className="bg-primary/10 text-primary border-none text-[10px]">Текущий</Badge>}
+                          </div>
+                          <div className="text-[10px] text-muted-foreground uppercase tracking-widest">Сводка месяца</div>
+                        </div>
+                        <div className="mt-4 grid gap-4 sm:grid-cols-3">
+                          <div className="space-y-1">
+                            <p className="text-[10px] uppercase text-muted-foreground">Выручка</p>
+                            <p className="text-sm font-semibold text-emerald-500">{item.sales.toLocaleString()} ₽</p>
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-[10px] uppercase text-muted-foreground">Закупки</p>
+                            <p className="text-sm font-semibold text-red-500">-{item.purchases.toLocaleString()} ₽</p>
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-[10px] uppercase text-muted-foreground">Прибыль</p>
+                            <p className={`text-sm font-black ${item.profit >= 0 ? "text-emerald-500" : "text-red-500"}`}>
+                              {item.profit.toLocaleString()} ₽
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+              <div>
+                <h3 className="text-2xl font-black">Операции</h3>
+                <p className="text-sm text-muted-foreground">Ручные продажи и закупки</p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  variant={financeTab === "purchases" ? "default" : "outline"}
+                  className="rounded-xl"
+                  onClick={() => setFinanceTab("purchases")}
+                >
+                  Закупки
+                </Button>
+                <Button
+                  variant={financeTab === "sales" ? "default" : "outline"}
+                  className="rounded-xl"
+                  onClick={() => setFinanceTab("sales")}
+                >
+                  Продажи
+                </Button>
+                {financeTab === "purchases" ? (
+                  <Button className="rounded-xl" onClick={() => openPurchaseDialog()}>Добавить закупку</Button>
+                ) : (
+                  <Button className="rounded-xl" onClick={() => openSaleDialog()}>Добавить продажу</Button>
+                )}
+              </div>
+            </div>
+
+            <AnimatePresence mode="wait">
+              <motion.div key={financeTab} {...panelMotion} className="grid gap-4">
+                {financeTab === "purchases" ? (
+                  filteredPurchases.length === 0 ? (
+                    <Card className="rounded-[2.5rem] border-white/20 shadow-xl bg-background/40 backdrop-blur-xl p-12 text-center">
+                      <p className="text-sm text-muted-foreground">Закупок пока нет.</p>
+                    </Card>
+                  ) : (
+                    filteredPurchases.map((purchase) => (
+                        <Card key={purchase.id} className="rounded-[2rem] border-white/20 shadow-xl bg-background/40 backdrop-blur-xl">
+                          <CardContent className="p-4 space-y-2">
+                          <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
+                            <div>
+                              <p className="text-[10px] uppercase text-muted-foreground">Закупка</p>
+                              <h4 className="text-lg font-black">{purchase.productName}</h4>
+                              <p className="text-xs text-muted-foreground">{formatTimestamp(purchase.date) || "—"}</p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-xl font-black text-red-500">-{purchase.totalAmount.toLocaleString()} ₽</p>
+                              <p className="text-xs text-muted-foreground">{purchase.qty} шт.</p>
+                            </div>
+                          </div>
+                          {purchase.comment && (
+                            <div className="text-[11px] text-muted-foreground bg-muted/30 border rounded-xl px-3 py-2">
+                              {purchase.comment}
+                            </div>
+                          )}
+                          <div className="flex justify-end gap-2">
+                            <Button size="icon" variant="ghost" className="h-9 w-9 rounded-xl" onClick={() => openPurchaseDialog(purchase)}>
+                              <Pencil className="w-4 h-4" />
+                            </Button>
+                            <Button size="icon" variant="ghost" className="h-9 w-9 rounded-xl text-destructive hover:bg-destructive/10" onClick={() => handleDeletePurchase(purchase.id)}>
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))
+                  )
+                ) : (
+                  filteredSales.length === 0 ? (
+                    <Card className="rounded-[2.5rem] border-white/20 shadow-xl bg-background/40 backdrop-blur-xl p-12 text-center">
+                      <p className="text-sm text-muted-foreground">Продаж пока нет.</p>
+                    </Card>
+                  ) : (
+                    filteredSales.map((sale) => {
+                      const isOrderSale = sale.sourceType === "order";
+                      const saleComment = (sale.comment || "").trim();
+                      const showComment = saleComment && saleComment.toLowerCase() !== "продажа с сайта";
+                      return (
+                        <Card key={sale.id} className="rounded-[2rem] border-white/20 shadow-xl bg-background/40 backdrop-blur-xl">
+                          <CardContent className="p-4 space-y-2">
+                            <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
+                              <div>
+                                <p className="text-[10px] uppercase text-muted-foreground">Продажа</p>
+                                <h4 className="text-lg font-black">{sale.productName}</h4>
+                                <div className="flex items-center gap-2">
+                                  <p className="text-xs text-muted-foreground">{formatTimestamp(sale.date) || "—"}</p>
+                                  <Badge className={isOrderSale ? "bg-emerald-500/10 text-emerald-500 border-none" : "bg-blue-500/10 text-blue-500 border-none"}>
+                                    {isOrderSale ? "Сайт" : "Ручная"}
+                                  </Badge>
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-xl font-black text-emerald-500">+{sale.totalAmount.toLocaleString()} ₽</p>
+                                <p className="text-xs text-muted-foreground">{sale.qty} шт.</p>
+                              </div>
+                            </div>
+                            {showComment && (
+                              <div className="text-[11px] text-muted-foreground bg-muted/30 border rounded-xl px-3 py-2">
+                                {saleComment}
+                              </div>
+                            )}
+                            <div className="flex justify-end gap-2">
+                              <Button size="icon" variant="ghost" className="h-9 w-9 rounded-xl" onClick={() => openSaleDialog(sale)}>
+                                <Pencil className="w-4 h-4" />
+                              </Button>
+                              {!isOrderSale && (
+                                <Button size="icon" variant="ghost" className="h-9 w-9 rounded-xl text-destructive hover:bg-destructive/10" onClick={() => handleDeleteSale(sale.id)}>
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
+                              )}
+                            </div>
+                          </CardContent>
+                        </Card>
+                      );
+                    })
+                  )
+                )}
+              </motion.div>
+            </AnimatePresence>
+
+            <Dialog open={purchaseDialogOpen} onOpenChange={setPurchaseDialogOpen}>
+              <DialogContent className="rounded-[2.5rem]">
+                <DialogHeader>
+                  <DialogTitle>{editingPurchase ? "Редактировать закупку" : "Новая закупка"}</DialogTitle>
+                  <DialogDescription className="text-muted-foreground">
+                    Укажите модель, количество и сумму закупки.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                  <div className="space-y-2">
+                    <Label>Модель</Label>
+                    <Select
+                      value={purchaseDraft.productId}
+                      onValueChange={(value) => setPurchaseDraft({ ...purchaseDraft, productId: value })}
+                    >
+                      <SelectTrigger className="h-12 w-full rounded-xl bg-muted/40 border">
+                        <SelectValue placeholder="Выберите модель" />
+                      </SelectTrigger>
+                      <SelectContent className="rounded-2xl border-white/10 bg-background/80 backdrop-blur-xl shadow-2xl">
+                        {products.length === 0 ? (
+                          <SelectItem value="no-products" disabled>Нет товаров</SelectItem>
+                        ) : (
+                          products.map((product) => (
+                            <SelectItem key={product.id} value={product.id}>{product.name}</SelectItem>
+                          ))
+                        )}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Количество</Label>
+                      <NumericInput value={purchaseDraft.qty} onValueChange={(value) => setPurchaseDraft({ ...purchaseDraft, qty: value })} className="h-12 rounded-xl" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Сумма (₽)</Label>
+                      <NumericInput value={purchaseDraft.totalAmount} onValueChange={(value) => setPurchaseDraft({ ...purchaseDraft, totalAmount: value })} className="h-12 rounded-xl" />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Дата</Label>
+                    <Input type="date" value={purchaseDraft.date} onChange={(e) => setPurchaseDraft({ ...purchaseDraft, date: e.target.value })} className="h-12 rounded-xl" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Комментарий</Label>
+                    <Textarea value={purchaseDraft.comment} onChange={(e) => setPurchaseDraft({ ...purchaseDraft, comment: e.target.value })} className="rounded-xl min-h-[100px]" />
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setPurchaseDialogOpen(false)}>Отмена</Button>
+                  <Button onClick={handleSavePurchase} disabled={!canSavePurchase}>Сохранить</Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+
+            <Dialog open={saleDialogOpen} onOpenChange={setSaleDialogOpen}>
+              <DialogContent className="rounded-[2.5rem]">
+                <DialogHeader>
+                  <DialogTitle>{editingSale ? "Редактировать продажу" : "Новая продажа"}</DialogTitle>
+                  <DialogDescription className="text-muted-foreground">
+                    Укажите модель, количество и сумму продажи.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                  <div className="space-y-2">
+                    <Label>Модель</Label>
+                    <Select
+                      value={saleDraft.productId}
+                      onValueChange={(value) => setSaleDraft({ ...saleDraft, productId: value })}
+                    >
+                      <SelectTrigger className="h-12 w-full rounded-xl bg-muted/40 border">
+                        <SelectValue placeholder="Выберите модель" />
+                      </SelectTrigger>
+                      <SelectContent className="rounded-2xl border-white/10 bg-background/80 backdrop-blur-xl shadow-2xl">
+                        {products.length === 0 ? (
+                          <SelectItem value="no-products" disabled>Нет товаров</SelectItem>
+                        ) : (
+                          products.map((product) => (
+                            <SelectItem key={product.id} value={product.id}>{product.name}</SelectItem>
+                          ))
+                        )}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Количество</Label>
+                      <NumericInput value={saleDraft.qty} onValueChange={(value) => setSaleDraft({ ...saleDraft, qty: value })} className="h-12 rounded-xl" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Сумма (₽)</Label>
+                      <NumericInput value={saleDraft.totalAmount} onValueChange={(value) => setSaleDraft({ ...saleDraft, totalAmount: value })} className="h-12 rounded-xl" />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Дата</Label>
+                    <Input type="date" value={saleDraft.date} onChange={(e) => setSaleDraft({ ...saleDraft, date: e.target.value })} className="h-12 rounded-xl" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Комментарий</Label>
+                    <Textarea value={saleDraft.comment} onChange={(e) => setSaleDraft({ ...saleDraft, comment: e.target.value })} className="rounded-xl min-h-[100px]" />
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setSaleDialogOpen(false)}>Отмена</Button>
+                  <Button onClick={handleSaveSale} disabled={!canSaveSale}>Сохранить</Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+            </motion.div>
+          </TabsContent>
+
+          <TabsContent value="users">
+            <motion.div {...tabMotion} className="space-y-8">
             <Card className="rounded-[2.5rem] border-white/20 shadow-2xl overflow-hidden bg-background/40 backdrop-blur-xl">
               <Table>
                 <TableHeader className="bg-muted/50">
                   <TableRow>
-                    <TableHead className="py-6 pl-8">Заказ / Дата</TableHead>
-                    <TableHead>Покупатель</TableHead>
-                    <TableHead>Сумма</TableHead>
-                    <TableHead>Статус</TableHead>
-                    <TableHead className="pr-8 text-right">Управление</TableHead>
+                    <TableHead className="pl-8 py-6">Пользователь</TableHead>
+                    <TableHead>Телефон</TableHead>
+                    <TableHead>VIP</TableHead>
+                    <TableHead>Заказы</TableHead>
+                    <TableHead>Потрачено</TableHead>
+                    <TableHead className="pr-8 text-right">Действия</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {orders.map((order) => (
-                    <TableRow key={order.id} className="hover:bg-muted/30 transition-colors">
-                      <TableCell className="py-6 pl-8">
-                        <div className="font-black text-sm uppercase tracking-tighter">#{order.id.slice(-6)}</div>
-                        <div className="text-xs text-muted-foreground mt-1">
-                          {new Date(order.createdAt?.seconds * 1000).toLocaleString('ru-RU')}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="font-bold">{order.name || 'Аноним'}</div>
-                        <div className="text-xs text-muted-foreground mt-0.5">{order.phone}</div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="font-black text-primary">{order.totalPrice.toLocaleString()} ₽</div>
-                        <div className="text-[10px] text-muted-foreground">{order.items.length} поз.</div>
-                      </TableCell>
-                      <TableCell>
-                        <select 
-                          value={order.status}
-                          onChange={(e) => handleUpdateOrderStatus(order.id, e.target.value)}
-                          className={`text-[11px] font-bold px-3 py-1.5 rounded-full border-none outline-none appearance-none cursor-pointer ${
-                            order.status === 'new' ? 'bg-blue-500/10 text-blue-500' :
-                            order.status === 'processing' ? 'bg-orange-500/10 text-orange-500' :
-                            order.status === 'delivered' ? 'bg-emerald-500/10 text-emerald-500' :
-                            'bg-muted text-muted-foreground'
-                          }`}
-                        >
-                          <option value="new">Новый</option>
-                          <option value="processing">В работе</option>
-                          <option value="shipped">Отправлен</option>
-                          <option value="delivered">Доставлен</option>
-                          <option value="cancelled">Отменен</option>
-                        </select>
-                      </TableCell>
-                      <TableCell className="pr-8 text-right">
-                        <Dialog>
-                          <DialogTrigger asChild>
-                            <Button variant="ghost" size="icon" className="rounded-xl"><Eye className="w-4 h-4" /></Button>
-                          </DialogTrigger>
-                          <DialogContent className="max-w-2xl rounded-[2rem]">
-                            <DialogHeader>
-                              <DialogTitle className="text-2xl font-black">Детали заказа #{order.id.slice(-6)}</DialogTitle>
-                            </DialogHeader>
-                            <div className="grid md:grid-cols-2 gap-8 py-6">
-                              <div className="space-y-6">
-                                <div>
-                                  <h4 className="text-xs font-black uppercase text-muted-foreground mb-3">Товары</h4>
-                                  <div className="space-y-3">
-                                    {order.items.map((it: any, i: number) => (
-                                      <div key={i} className="flex justify-between items-center bg-muted/30 p-3 rounded-2xl border">
-                                        <span className="text-sm font-bold">{it.name}</span>
-                                        <span className="text-xs font-black bg-primary/10 text-primary px-2 py-1 rounded-lg">x{it.quantity}</span>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              </div>
-                              <div className="space-y-6">
-                                <div>
-                                  <h4 className="text-xs font-black uppercase text-muted-foreground mb-3">Информация о доставке</h4>
-                                  <div className="bg-muted/30 p-4 rounded-2xl border space-y-2 text-sm">
-                                    <p><span className="text-muted-foreground">Метод:</span> <b>{order.deliveryMethod === 'cdek' ? 'СДЭК' : 'Самовывоз'}</b></p>
-                                    <p><span className="text-muted-foreground">Адрес:</span> <b>{order.address || 'г. Воронеж'}</b></p>
-                                    <p><span className="text-muted-foreground">TG:</span> <b>{order.telegram || '—'}</b></p>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          </DialogContent>
-                        </Dialog>
-                      </TableCell>
+                  {filteredUsers.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={6} className="h-64 text-center text-muted-foreground">Клиенты не найдены</TableCell>
                     </TableRow>
-                  ))}
+                  ) : (
+                    filteredUsers.map(userItem => (
+                      <TableRow key={userItem.uid} className="hover:bg-muted/30 transition-colors">
+                        <TableCell className="pl-8 py-6">
+                          <div className="font-bold">{userItem.name || "Без имени"}</div>
+                          <div className="text-xs text-muted-foreground">{userItem.email || "—"}</div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="text-sm font-medium">{userItem.phone || "—"}</div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge className={userItem.loyaltyDiscount > 0 ? "bg-emerald-500/10 text-emerald-500 border-none" : "bg-muted text-muted-foreground border-none"}>
+                            {userItem.loyaltyDiscount > 0 ? `VIP ${userItem.loyaltyDiscount}%` : "VIP0"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="font-bold">{userItem.purchasesCount || 0}</div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="font-black text-primary">{(userItem.totalSpent || 0).toLocaleString()} ₽</div>
+                        </TableCell>
+                        <TableCell className="pr-8 text-right">
+                          <Button size="icon" variant="ghost" className="h-9 w-9 rounded-xl" onClick={() => openUserDialog(userItem)}>
+                            <Pencil className="w-4 h-4" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
                 </TableBody>
               </Table>
             </Card>
-          </TabsContent>
-
-          <TabsContent value="finance" className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <div className="grid lg:grid-cols-3 gap-8">
-              <Card className="lg:col-span-2 rounded-[2.5rem] border-white/20 shadow-2xl overflow-hidden bg-background/40 backdrop-blur-xl">
-                <CardHeader className="flex flex-row items-center justify-between">
-                  <div>
-                    <CardTitle>Операции</CardTitle>
-                    <CardDescription>Движение денежных средств</CardDescription>
-                  </div>
-                  <Dialog>
-                    <DialogTrigger asChild>
-                      <Button className="rounded-2xl h-11 px-6 gap-2"><Plus className="w-4 h-4" /> Добавить операцию</Button>
-                    </DialogTrigger>
-                    <DialogContent className="rounded-[2.5rem]">
-                      <DialogHeader><DialogTitle>Новая транзакция</DialogTitle></DialogHeader>
-                      <form className="space-y-4 py-4">
-                        <div className="space-y-2">
-                          <Label>Тип</Label>
-                          <select className="w-full h-12 bg-muted rounded-xl px-4 border">
-                            <option value="sale">Доход (Продажа)</option>
-                            <option value="purchase">Расход (Закупка)</option>
-                          </select>
-                        </div>
-                        <div className="space-y-2">
-                          <Label>Сумма (₽)</Label>
-                          <Input placeholder="0" className="h-12 rounded-xl" />
-                        </div>
-                        <div className="space-y-2">
-                          <Label>Описание</Label>
-                          <Input placeholder="Напр. Партия сенсоров 50шт" className="h-12 rounded-xl" />
-                        </div>
-                        <Button className="w-full h-12 rounded-xl mt-4">Сохранить</Button>
-                      </form>
-                    </DialogContent>
-                  </Dialog>
-                </CardHeader>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="pl-8">Дата</TableHead>
-                      <TableHead>Описание</TableHead>
-                      <TableHead>Тип</TableHead>
-                      <TableHead className="pr-8 text-right">Сумма</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {finance.length === 0 ? (
-                      <TableRow><TableCell colSpan={4} className="h-64 text-center text-muted-foreground">Транзакций пока нет</TableCell></TableRow>
-                    ) : (
-                      finance.map(t => (
-                        <TableRow key={t.id}>
-                          <TableCell className="pl-8">{new Date(t.date).toLocaleDateString()}</TableCell>
-                          <TableCell className="font-medium">{t.description}</TableCell>
-                          <TableCell>
-                            {t.type === 'sale' ? <Badge className="bg-emerald-500/10 text-emerald-500 border-none">Доход</Badge> : <Badge className="bg-red-500/10 text-red-500 border-none">Расход</Badge>}
-                          </TableCell>
-                          <TableCell className={`pr-8 text-right font-black ${t.type === 'sale' ? 'text-emerald-500' : 'text-red-500'}`}>
-                            {t.type === 'sale' ? '+' : '-'}{t.amount.toLocaleString()} ₽
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
-              </Card>
-              <Card className="rounded-[2.5rem] border-white/20 shadow-2xl overflow-hidden bg-background/40 backdrop-blur-xl p-8 space-y-8">
-                <div>
-                  <h4 className="text-xl font-black mb-6">Баланс</h4>
-                  <div className="p-8 rounded-[2rem] bg-gradient-to-br from-primary to-blue-700 text-white shadow-2xl relative overflow-hidden group">
-                    <div className="absolute -top-10 -right-10 w-40 h-40 bg-white/10 rounded-full blur-3xl group-hover:scale-150 transition-transform duration-700" />
-                    <p className="text-xs font-bold uppercase tracking-widest opacity-70 mb-2">Общий баланс</p>
-                    <h2 className="text-4xl font-black mb-6">128,450 ₽</h2>
-                    <div className="flex justify-between items-end">
-                      <div className="text-[10px] font-mono opacity-50 tracking-tighter">FSL-STORE-ADMIN-WALLET</div>
-                      <div className="h-8 w-12 bg-white/20 rounded-md backdrop-blur-md" />
+            <Dialog open={userDialogOpen} onOpenChange={setUserDialogOpen}>
+              <DialogContent className="rounded-[2rem] max-w-xl">
+                <DialogHeader>
+                  <DialogTitle>Управление клиентом</DialogTitle>
+                  <DialogDescription className="text-muted-foreground">
+                    Блокировка и ручная настройка VIP-статуса.
+                  </DialogDescription>
+                </DialogHeader>
+                {userDraft && (
+                  <div className="space-y-4 py-4">
+                    <div className="space-y-2">
+                      <Label>Пользователь</Label>
+                      <div className="rounded-xl border bg-muted/30 px-4 py-3 text-sm">
+                        <div className="font-bold">{userDraft.name || "Без имени"}</div>
+                        <div className="text-xs text-muted-foreground">{userDraft.email || "—"}</div>
+                      </div>
                     </div>
+                    <div className="grid md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>VIP уровень</Label>
+                        <Select
+                          value={String(userDraft.loyaltyLevel ?? 0)}
+                          onValueChange={(value) => {
+                            const level = Number(value);
+                            setUserDraft({
+                              ...userDraft,
+                              loyaltyLevel: level,
+                              loyaltyDiscount: getVipDiscountByLevel(level),
+                            });
+                          }}
+                        >
+                          <SelectTrigger className="h-11 w-full rounded-xl bg-muted/40 border">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent className="rounded-2xl border-white/10 bg-background/80 backdrop-blur-xl shadow-2xl">
+                            <SelectItem value="0">VIP0 (0%)</SelectItem>
+                            <SelectItem value="1">VIP1 ({settingsDraft.vipRules.vip1.discount}%)</SelectItem>
+                            <SelectItem value="2">VIP2 ({settingsDraft.vipRules.vip2.discount}%)</SelectItem>
+                            <SelectItem value="3">VIP3 ({settingsDraft.vipRules.vip3.discount}%)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Скидка %</Label>
+                        <NumericInput
+                          value={userDraft.loyaltyDiscount || 0}
+                          onValueChange={(value) => setUserDraft({ ...userDraft, loyaltyDiscount: value })}
+                          className="h-11 rounded-xl"
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Блокировка</Label>
+                      <div className="flex items-center justify-between rounded-xl border bg-muted/40 px-4 py-3">
+                        <span className="text-xs text-muted-foreground">Запретить оформление заказов</span>
+                        <Switch checked={Boolean(userDraft.isBanned)} onCheckedChange={(value) => setUserDraft({ ...userDraft, isBanned: value })} />
+                      </div>
+                    </div>
+                    {userDraft.isBanned && (
+                      <div className="space-y-2">
+                        <Label>Причина блокировки</Label>
+                        <Input
+                          value={userDraft.banReason || ""}
+                          onChange={(e) => setUserDraft({ ...userDraft, banReason: e.target.value })}
+                          className="h-11 rounded-xl"
+                        />
+                      </div>
+                    )}
                   </div>
-                </div>
-                <div className="space-y-4">
-                  <h4 className="font-bold text-sm text-muted-foreground uppercase tracking-wider">Быстрые отчеты</h4>
-                  <Button variant="outline" className="w-full h-14 rounded-2xl border-white/10 bg-white/5 justify-between px-6 group">
-                    Отчет за неделю <ArrowUpRight className="w-4 h-4 group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />
-                  </Button>
-                  <Button variant="outline" className="w-full h-14 rounded-2xl border-white/10 bg-white/5 justify-between px-6 group">
-                    Отчет за месяц <ArrowUpRight className="w-4 h-4 group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />
-                  </Button>
-                </div>
-              </Card>
-            </div>
+                )}
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setUserDialogOpen(false)}>Отмена</Button>
+                  <Button onClick={handleSaveUser}>Сохранить</Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+            </motion.div>
           </TabsContent>
 
-          <TabsContent value="reviews" className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <TabsContent value="reviews">
+            <motion.div {...tabMotion} className="space-y-8">
             <Card className="rounded-[2.5rem] border-white/20 shadow-2xl overflow-hidden bg-background/40 backdrop-blur-xl">
               <Table>
                 <TableHeader>
@@ -598,17 +2422,19 @@ export default function AdminPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {reviews.length === 0 ? (
+                  {filteredReviews.length === 0 ? (
                     <TableRow><TableCell colSpan={5} className="h-64 text-center text-muted-foreground">Отзывов пока нет</TableCell></TableRow>
                   ) : (
-                    reviews.map(r => (
+                    filteredReviews.map(r => (
                       <TableRow key={r.id}>
                         <TableCell className="pl-8 py-6">
-                          <div className="font-bold">{r.userEmail}</div>
-                          <div className="text-[10px] text-muted-foreground">{new Date(r.createdAt?.seconds * 1000).toLocaleDateString()}</div>
+                          <div className="font-bold">{r.userName || "Покупатель"}</div>
+                          <div className="text-[10px] text-muted-foreground">
+                            {formatTimestamp(r.createdAt, "ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" }) || "—"}
+                          </div>
                         </TableCell>
                         <TableCell className="max-w-md">
-                          <p className="text-sm italic line-clamp-2">"{r.text}"</p>
+                          <p className="text-sm italic line-clamp-2">«{r.text}»</p>
                         </TableCell>
                         <TableCell>
                           <div className="flex text-orange-400">
@@ -618,14 +2444,17 @@ export default function AdminPage() {
                           </div>
                         </TableCell>
                         <TableCell>
-                          {r.status === 'pending' ? <Badge className="bg-orange-500/10 text-orange-500 border-none">Ожидает</Badge> : <Badge className="bg-emerald-500/10 text-emerald-500 border-none">Опубликован</Badge>}
+                          {r.status === "pending" && <Badge className="bg-orange-500/10 text-orange-500 border-none">Ожидает</Badge>}
+                          {r.status === "approved" && <Badge className="bg-emerald-500/10 text-emerald-500 border-none">Опубликован</Badge>}
+                          {r.status === "rejected" && <Badge className="bg-red-500/10 text-red-500 border-none">Отклонен</Badge>}
                         </TableCell>
                         <TableCell className="pr-8 text-right">
                           <div className="flex justify-end gap-2">
-                            {r.status === 'pending' && (
-                              <Button size="icon" variant="ghost" className="h-9 w-9 rounded-xl text-emerald-500 hover:bg-emerald-500/10" onClick={() => handleReviewAction(r.id, 'approve')}><Check className="w-4 h-4" /></Button>
+                            <Button size="icon" variant="ghost" className="h-9 w-9 rounded-xl" onClick={() => openReviewDialog(r)}><Pencil className="w-4 h-4" /></Button>
+                            {r.status === "pending" && (
+                              <Button size="icon" variant="ghost" className="h-9 w-9 rounded-xl text-emerald-500 hover:bg-emerald-500/10" onClick={() => handleReviewAction(r.id, "approve")}><Check className="w-4 h-4" /></Button>
                             )}
-                            <Button size="icon" variant="ghost" className="h-9 w-9 rounded-xl text-destructive hover:bg-destructive/10" onClick={() => handleReviewAction(r.id, 'reject')}><Trash2 className="w-4 h-4" /></Button>
+                            <Button size="icon" variant="ghost" className="h-9 w-9 rounded-xl text-destructive hover:bg-destructive/10" onClick={() => handleReviewAction(r.id, "reject")}><Trash2 className="w-4 h-4" /></Button>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -634,83 +2463,408 @@ export default function AdminPage() {
                 </TableBody>
               </Table>
             </Card>
+            <Dialog open={reviewDialogOpen} onOpenChange={setReviewDialogOpen}>
+              <DialogContent className="rounded-[2rem] max-w-2xl">
+                <DialogHeader>
+                  <DialogTitle>Редактировать отзыв</DialogTitle>
+                  <DialogDescription className="text-muted-foreground">
+                    Отредактируйте текст, рейтинг и статус публикации.
+                  </DialogDescription>
+                </DialogHeader>
+                {reviewDraft && (
+                  <div className="space-y-4 py-4">
+                    <div className="space-y-2">
+                      <Label>Имя</Label>
+                      <Input
+                        value={reviewDraft.userName || ""}
+                        onChange={(e) => setReviewDraft({ ...reviewDraft, userName: e.target.value })}
+                        className="h-11 rounded-xl"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Текст</Label>
+                      <Textarea
+                        value={reviewDraft.text}
+                        onChange={(e) => setReviewDraft({ ...reviewDraft, text: e.target.value })}
+                        className="rounded-xl min-h-[140px]"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Рейтинг</Label>
+                        <NumericInput
+                          value={reviewDraft.rating}
+                          onValueChange={(value) => setReviewDraft({ ...reviewDraft, rating: Math.min(5, Math.max(1, value)) })}
+                          className="h-12 rounded-xl"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Статус</Label>
+                        <Select
+                          value={reviewDraft.status}
+                          onValueChange={(value) => setReviewDraft({ ...reviewDraft, status: value as Review["status"] })}
+                        >
+                          <SelectTrigger className="h-12 w-full rounded-xl bg-muted/40 border">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent className="rounded-2xl border-white/10 bg-background/80 backdrop-blur-xl shadow-2xl">
+                            <SelectItem value="pending">Ожидает</SelectItem>
+                            <SelectItem value="approved">Опубликован</SelectItem>
+                            <SelectItem value="rejected">Отклонен</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setReviewDialogOpen(false)}>Отмена</Button>
+                  <Button onClick={handleSaveReview}>Сохранить</Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+            </motion.div>
           </TabsContent>
 
-          <TabsContent value="settings" className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+          <TabsContent value="settings">
+            <motion.div {...tabMotion} className="space-y-8">
+            <div className="grid lg:grid-cols-3 gap-8">
               <Card className="rounded-[2rem] border-white/20 shadow-xl bg-background/40 backdrop-blur-xl">
                 <CardHeader><CardTitle className="text-lg">Программа лояльности</CardTitle></CardHeader>
                 <CardContent className="space-y-6">
-                  <div className="space-y-4 p-4 rounded-2xl bg-muted/30 border">
-                    <Label className="text-[10px] font-black uppercase">VIP 1: Постоянный клиент</Label>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-1">
-                        <span className="text-[10px] text-muted-foreground uppercase">Сумма от</span>
-                        <Input defaultValue="15000" className="h-10 rounded-lg" />
+                  <p className="text-xs text-muted-foreground">VIP0 = 0% автоматически. Изменения применяются для новых заказов.</p>
+                  {(["vip1", "vip2", "vip3"] as const).map((tier, index) => (
+                    <div key={tier} className="space-y-4 p-4 rounded-2xl bg-muted/30 border">
+                      <Label className="text-[10px] font-black uppercase">VIP {index + 1}: {settingsDraft.vipRules[tier].label}</Label>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <span className="text-[10px] text-muted-foreground uppercase">Заказов от</span>
+                          <NumericInput
+                            value={settingsDraft.vipRules[tier].orders}
+                            onValueChange={(value) => updateVipRule(tier, "orders", value)}
+                            className="h-10 rounded-lg"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <span className="text-[10px] text-muted-foreground uppercase">Сумма от</span>
+                          <NumericInput
+                            value={settingsDraft.vipRules[tier].spent}
+                            onValueChange={(value) => updateVipRule(tier, "spent", value)}
+                            className="h-10 rounded-lg"
+                          />
+                        </div>
                       </div>
-                      <div className="space-y-1">
-                        <span className="text-[10px] text-muted-foreground uppercase">Скидка %</span>
-                        <Input defaultValue="5" className="h-10 rounded-lg" />
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <span className="text-[10px] text-muted-foreground uppercase">Скидка %</span>
+                          <NumericInput
+                            value={settingsDraft.vipRules[tier].discount}
+                            onValueChange={(value) => updateVipRule(tier, "discount", value)}
+                            className="h-10 rounded-lg"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <span className="text-[10px] text-muted-foreground uppercase">Название</span>
+                          <Input
+                            value={settingsDraft.vipRules[tier].label}
+                            onChange={(e) => updateVipRule(tier, "label", e.target.value)}
+                            className="h-10 rounded-lg"
+                          />
+                        </div>
                       </div>
                     </div>
-                  </div>
-                  <div className="space-y-4 p-4 rounded-2xl bg-muted/30 border">
-                    <Label className="text-[10px] font-black uppercase">VIP 2: Партнер</Label>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-1">
-                        <span className="text-[10px] text-muted-foreground uppercase">Сумма от</span>
-                        <Input defaultValue="150000" className="h-10 rounded-lg" />
-                      </div>
-                      <div className="space-y-1">
-                        <span className="text-[10px] text-muted-foreground uppercase">Скидка %</span>
-                        <Input defaultValue="7" className="h-10 rounded-lg" />
-                      </div>
+                  ))}
+                  <Button className="w-full h-12 rounded-xl" onClick={handleSaveSettings}>Сохранить настройки</Button>
+                </CardContent>
+              </Card>
+
+              <div className="space-y-8">
+                <Card className="rounded-[2rem] border-white/20 shadow-xl bg-background/40 backdrop-blur-xl">
+                  <CardHeader><CardTitle className="text-lg">Поля формы заказа</CardTitle></CardHeader>
+                  <CardContent className="space-y-6">
+                    {settingsDraft.orderForm.fields.length === 0 ? (
+                      <div className="text-sm text-muted-foreground">Дополнительные поля не добавлены.</div>
+                    ) : (
+                      settingsDraft.orderForm.fields.map((field, index) => (
+                        <div key={field.id} className="p-4 rounded-2xl bg-muted/30 border space-y-4">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-black uppercase text-muted-foreground">Поле #{index + 1}</span>
+                            <Button size="icon" variant="ghost" className="h-8 w-8 rounded-xl text-destructive hover:bg-destructive/10" onClick={() => removeOrderField(index)}>
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                          <div className="grid md:grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                              <Label>ID</Label>
+                              <Input value={field.id} onChange={(e) => updateOrderField(index, { id: e.target.value })} className="h-10 rounded-lg" />
+                            </div>
+                            <div className="space-y-2">
+                              <Label>Название</Label>
+                              <Input value={field.label} onChange={(e) => updateOrderField(index, { label: e.target.value })} className="h-10 rounded-lg" />
+                            </div>
+                          </div>
+                          <div className="grid md:grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                              <Label>Тип</Label>
+                              <Select
+                                value={field.type}
+                                onValueChange={(value) => updateOrderField(index, { type: value as SettingsConfig["orderForm"]["fields"][number]["type"] })}
+                              >
+                                <SelectTrigger className="h-10 w-full rounded-lg bg-muted/40 border">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent className="rounded-2xl border-white/10 bg-background/80 backdrop-blur-xl shadow-2xl">
+                                  <SelectItem value="text">Текст</SelectItem>
+                                  <SelectItem value="textarea">Многострочный текст</SelectItem>
+                                  <SelectItem value="number">Число</SelectItem>
+                                  <SelectItem value="date">Дата</SelectItem>
+                                  <SelectItem value="time">Время</SelectItem>
+                                  <SelectItem value="datetime-local">Дата и время</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="space-y-2">
+                              <Label>Обязательное</Label>
+                              <div className="flex items-center justify-between rounded-xl border bg-muted/40 px-3 h-10">
+                                <span className="text-xs text-muted-foreground">Требовать заполнение</span>
+                                <Switch checked={field.required} onCheckedChange={(value) => updateOrderField(index, { required: value })} />
+                              </div>
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Placeholder</Label>
+                            <Input value={field.placeholder || ""} onChange={(e) => updateOrderField(index, { placeholder: e.target.value })} className="h-10 rounded-lg" />
+                          </div>
+                          {RESERVED_ORDER_FIELD_IDS.has(field.id) && (
+                            <p className="text-xs text-destructive">ID зарезервирован системой и будет проигнорирован.</p>
+                          )}
+                        </div>
+                      ))
+                    )}
+                    <div className="flex items-center gap-3">
+                      <Button variant="outline" className="flex-1 h-12 rounded-xl" onClick={addOrderField}>Добавить поле</Button>
+                      <Button className="flex-1 h-12 rounded-xl" onClick={handleSaveSettings}>Сохранить настройки</Button>
                     </div>
-                  </div>
-                  <Button className="w-full h-12 rounded-xl">Сохранить VIP-сетку</Button>
+                  </CardContent>
+                </Card>
+
+                <Card className="rounded-[2rem] border-white/20 shadow-xl bg-background/40 backdrop-blur-xl">
+                  <CardHeader><CardTitle className="text-lg">Службы доставки</CardTitle></CardHeader>
+                  <CardContent className="space-y-6">
+                    {settingsDraft.deliveryServices.length === 0 ? (
+                      <div className="text-sm text-muted-foreground">Службы доставки не настроены.</div>
+                    ) : (
+                      settingsDraft.deliveryServices.map((service, index) => (
+                        <div key={service.id} className="p-4 rounded-2xl bg-muted/30 border space-y-4">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-black uppercase text-muted-foreground">Служба #{index + 1}</span>
+                            <Button size="icon" variant="ghost" className="h-8 w-8 rounded-xl text-destructive hover:bg-destructive/10" onClick={() => removeDeliveryService(index)}>
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                          <div className="grid md:grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                              <Label>ID</Label>
+                              <Input value={service.id} onChange={(e) => updateDeliveryService(index, { id: e.target.value })} className="h-10 rounded-lg" />
+                            </div>
+                            <div className="space-y-2">
+                              <Label>Название</Label>
+                              <Input value={service.label} onChange={(e) => updateDeliveryService(index, { label: e.target.value })} className="h-10 rounded-lg" />
+                            </div>
+                          </div>
+                          <div className="grid md:grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                              <Label>Порядок</Label>
+                              <NumericInput
+                                value={service.sortOrder}
+                                onValueChange={(value) => updateDeliveryService(index, { sortOrder: value })}
+                                className="h-10 rounded-lg"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label>Активна</Label>
+                              <div className="flex items-center justify-between rounded-xl border bg-muted/40 px-3 h-10">
+                                <span className="text-xs text-muted-foreground">Отображать в заказе</span>
+                                <Switch checked={service.active} onCheckedChange={(value) => updateDeliveryService(index, { active: value })} />
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                    <div className="flex items-center gap-3">
+                      <Button variant="outline" className="flex-1 h-12 rounded-xl" onClick={addDeliveryService}>Добавить службу</Button>
+                      <Button className="flex-1 h-12 rounded-xl" onClick={handleSaveSettings}>Сохранить настройки</Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              <div className="space-y-8">
+                <Card className="rounded-[2rem] border-white/20 shadow-xl bg-background/40 backdrop-blur-xl">
+                  <CardHeader><CardTitle className="text-lg">Изображения</CardTitle></CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-2">
+                      <Label>Hero изображение (URL)</Label>
+                      <Input
+                        value={settingsDraft.media.heroImageUrl}
+                        onChange={(e) => setSettingsDraft({ ...settingsDraft, media: { ...settingsDraft.media, heroImageUrl: e.target.value } })}
+                        placeholder="https://..."
+                        className="h-12 rounded-xl"
+                      />
+                      <p className="text-xs text-muted-foreground">Используется в первом экране главной страницы.</p>
+                    </div>
+                    <Button className="w-full h-12 rounded-xl" onClick={handleSaveSettings}>Сохранить настройки</Button>
+                  </CardContent>
+                </Card>
+
+                <Card className="rounded-[2rem] border-primary/20 shadow-xl bg-primary/5 border-2">
+                  <CardHeader>
+                    <CardTitle className="text-lg text-primary">Интеграции и система</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-6">
+                    <div className="p-4 rounded-2xl bg-background/50 border space-y-2">
+                      <p className="text-xs font-bold">Telegram токен и Chat ID хранятся в секретах Worker и не сохраняются в Firestore.</p>
+                      <p className="text-xs text-muted-foreground">Проверьте настройки в Cloudflare Workers.</p>
+                    </div>
+                    <div className="p-4 rounded-2xl bg-background/50 border space-y-3">
+                      <p className="text-xs font-bold leading-relaxed italic">Инициализация базы данных создаст начальный набор товаров и настроек.</p>
+                      <Button 
+                        variant="outline" 
+                        className="w-full h-12 rounded-xl border-primary text-primary hover:bg-primary hover:text-white transition-all gap-2"
+                        onClick={seedDatabase}
+                        disabled={isSeeding}
+                      >
+                        {isSeeding ? <RefreshCw className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                        Инициализировать БД (Seed)
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+          </motion.div>
+          </TabsContent>
+
+          <TabsContent value="status">
+            <motion.div {...tabMotion} className="space-y-8">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+              <div>
+                <h3 className="text-2xl font-black">Статусы системы</h3>
+                <p className="text-sm text-muted-foreground">Проверка Worker, Firestore и Telegram</p>
+              </div>
+              <Button
+                variant="outline"
+                className="h-11 rounded-xl gap-2"
+                onClick={refreshStatus}
+                disabled={statusLoading}
+              >
+                {statusLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                Обновить статус
+              </Button>
+            </div>
+
+            <div className="grid md:grid-cols-3 gap-6">
+              <Card className="rounded-[2rem] border-white/20 shadow-xl bg-background/40 backdrop-blur-xl">
+                <CardHeader>
+                  <CardTitle className="text-lg">Worker</CardTitle>
+                  <CardDescription>Доступность API</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <Badge className={workerBadge.className}>{workerBadge.label}</Badge>
+                  <p className="text-xs text-muted-foreground">Health: `/api/health`</p>
                 </CardContent>
               </Card>
 
               <Card className="rounded-[2rem] border-white/20 shadow-xl bg-background/40 backdrop-blur-xl">
-                <CardHeader><CardTitle className="text-lg">Уведомления (TG)</CardTitle></CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="space-y-2">
-                    <Label>Bot API Token</Label>
-                    <Input type="password" placeholder="XXXX:YYYY" className="h-12 rounded-xl" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Admin Chat ID</Label>
-                    <Input placeholder="12345678" className="h-12 rounded-xl" />
-                  </div>
-                  <Button className="w-full h-12 rounded-xl mt-4">Обновить ключи</Button>
-                  <p className="text-[10px] text-center text-muted-foreground mt-4">Используется Worker'ом для отправки уведомлений</p>
+                <CardHeader>
+                  <CardTitle className="text-lg">Firestore</CardTitle>
+                  <CardDescription>Чтение настроек</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <Badge className={firestoreBadge.className}>{firestoreBadge.label}</Badge>
+                  {statusSnapshot.firestoreError && (
+                    <p className="text-xs text-destructive">{statusSnapshot.firestoreError}</p>
+                  )}
                 </CardContent>
               </Card>
 
-              <Card className="rounded-[2rem] border-primary/20 shadow-xl bg-primary/5 border-2">
+              <Card className="rounded-[2rem] border-white/20 shadow-xl bg-background/40 backdrop-blur-xl">
                 <CardHeader>
-                  <CardTitle className="text-lg text-primary">Управление Системой</CardTitle>
+                  <CardTitle className="text-lg">Telegram</CardTitle>
+                  <CardDescription>Статус интеграции</CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="p-4 rounded-2xl bg-background/50 border space-y-3">
-                    <p className="text-xs font-bold leading-relaxed italic">"Инициализация базы данных создаст начальный набор товаров, настроек и схем."</p>
-                    <Button 
-                      variant="outline" 
-                      className="w-full h-12 rounded-xl border-primary text-primary hover:bg-primary hover:text-white transition-all gap-2"
-                      onClick={seedDatabase}
-                      disabled={isSeeding}
-                    >
-                      {isSeeding ? <RefreshCw className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-                      Инициализировать БД (Seed)
-                    </Button>
-                  </div>
-                  <div className="p-4 rounded-2xl bg-background/50 border space-y-3">
-                    <p className="text-xs font-bold text-destructive">ВНИМАНИЕ: Очистка кэша сбросит локальные настройки админки.</p>
-                    <Button variant="outline" className="w-full h-12 rounded-xl text-destructive hover:bg-destructive hover:text-white" onClick={() => toast.info("Кэш очищен")}>Очистить Кэш</Button>
-                  </div>
+                <CardContent className="space-y-4">
+                  <Badge className={telegramBadge.className}>{telegramBadge.label}</Badge>
+                  <Button
+                    variant="outline"
+                    className="w-full h-11 rounded-xl"
+                    onClick={handleTelegramTest}
+                    disabled={statusSnapshot.telegramConfigured !== true}
+                  >
+                    Тестовое сообщение
+                  </Button>
                 </CardContent>
               </Card>
             </div>
+
+            <Card className="rounded-[2rem] border-white/20 shadow-xl bg-background/40 backdrop-blur-xl">
+              <CardContent className="p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <div>
+                  <p className="text-sm font-semibold">Последняя проверка</p>
+                  <p className="text-xs text-muted-foreground">{statusSnapshot.checkedAt || "—"}</p>
+                </div>
+                <p className="text-xs text-muted-foreground">Тестовая отправка доступна только админу.</p>
+              </CardContent>
+            </Card>
+            </motion.div>
+          </TabsContent>
+
+          <TabsContent value="logs">
+            <motion.div {...tabMotion} className="space-y-6">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+              <div>
+                <h3 className="text-2xl font-black">Логи</h3>
+                <p className="text-sm text-muted-foreground">Последние действия и ответы воркера</p>
+              </div>
+              <Button variant="outline" className="h-11 rounded-xl" onClick={() => setLogEntries([])}>
+                Очистить
+              </Button>
+            </div>
+
+            <Card className="rounded-[2rem] border-white/20 shadow-xl bg-background/40 backdrop-blur-xl">
+              <CardContent className="p-0">
+                <div className="max-h-[420px] overflow-y-auto">
+                  {logEntries.length === 0 ? (
+                    <div className="p-6 text-sm text-muted-foreground">Логов пока нет.</div>
+                  ) : (
+                    logEntries.map((entry) => (
+                      <div key={entry.id} className="px-6 py-4 border-b border-white/10">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-3">
+                            <Badge className={
+                              entry.level === "success"
+                                ? "bg-emerald-500/10 text-emerald-500 border-none"
+                                : entry.level === "error"
+                                  ? "bg-red-500/10 text-red-500 border-none"
+                                  : "bg-blue-500/10 text-blue-500 border-none"
+                            }>
+                              {entry.level === "success" ? "OK" : entry.level === "error" ? "Ошибка" : "Инфо"}
+                            </Badge>
+                            <span className="text-sm font-semibold">{entry.message}</span>
+                          </div>
+                          <span className="text-xs text-muted-foreground">{entry.time}</span>
+                        </div>
+                        {entry.details && (
+                          <p className="text-xs text-muted-foreground mt-2">{entry.details}</p>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+            </motion.div>
           </TabsContent>
         </Tabs>
       </div>

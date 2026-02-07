@@ -11,8 +11,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { motion } from "framer-motion";
+import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 
 const loginSchema = z.object({
   email: z.string().email("Некорректный email"),
@@ -25,6 +25,8 @@ export function LoginForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirectTo = searchParams.get("redirect") || "/account";
 
   const {
     register,
@@ -39,10 +41,11 @@ export function LoginForm() {
     try {
       await signInWithEmailAndPassword(auth, data.email, data.password);
       toast.success("Вы успешно вошли!");
-      router.push("/account");
-    } catch (error: any) {
-      console.error(error);
-      if (error.code === "auth/user-not-found" || error.code === "auth/wrong-password" || error.code === "auth/invalid-credential") {
+      router.push(redirectTo);
+    } catch (error) {
+      const err = error as { code?: string };
+      console.error(err);
+      if (err.code === "auth/user-not-found" || err.code === "auth/wrong-password" || err.code === "auth/invalid-credential") {
         toast.error("Неверный email или пароль");
       } else {
         toast.error("Произошла ошибка при входе");
@@ -105,5 +108,3 @@ export function LoginForm() {
     </form>
   );
 }
-
-import Link from "next/link";

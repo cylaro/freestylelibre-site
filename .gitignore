@@ -23,6 +23,9 @@
 # misc
 .DS_Store
 *.pem
+.env.local
+.env.*
+worker/serviceAccount.json
 
 # debug
 npm-debug.log*

@@ -6,7 +6,9 @@ service cloud.firestore {
       return request.auth != null;
     }
     function isAdmin() {
-      return isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true;
+      return isSignedIn() &&
+        (exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true);
     }
     function isOwner(userId) {
       return isSignedIn() && request.auth.uid == userId;
@@ -17,40 +19,62 @@ service cloud.firestore {
       allow read: if isOwner(userId) || isAdmin();
       allow create: if isSignedIn() && request.auth.uid == userId;
       allow update: if isOwner(userId) && 
-                    !request.resource.data.diff(resource.data).affectedKeys().hasAny(['isAdmin', 'isBanned', 'loyaltyLevel', 'loyaltyDiscount', 'totalSpent', 'totalOrders'])
-                    || isAdmin();
+                    !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+                      'isAdmin',
+                      'isBanned',
+                      'banReason',
+                      'loyaltyLevel',
+                      'loyaltyDiscount',
+                      'purchasesCount',
+                      'totalSpent',
+                      'createdAt',
+                      'updatedAt',
+                      'email',
+                      'uid'
+                    ]) || isAdmin();
+    }
+
+    // Admins collection (manual admin grants)
+    match /admins/{userId} {
+      allow read: if isAdmin();
+      allow write: if false;
     }
 
     // Products collection
     match /products/{productId} {
       allow read: if resource.data.active == true || isAdmin();
-      allow write: if isAdmin();
+      allow write: if false;
     }
 
     // Orders collection
     match /orders/{orderId} {
       allow read: if isOwner(resource.data.userId) || isAdmin();
       allow create: if false; // Only Worker (Service Account) can create orders
-      allow update: if isAdmin();
+      allow update: if false;
     }
 
     // Reviews collection
     match /reviews/{reviewId} {
       allow read: if resource.data.status == 'approved' || isOwner(resource.data.userId) || isAdmin();
-      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
-      allow update: if isAdmin();
-      allow delete: if isAdmin();
+      allow create, update, delete: if false;
     }
 
     // Settings collection
     match /settings/{docId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if false;
     }
 
-    // Finance Transactions
-    match /financeTransactions/{txId} {
-      allow read, write: if isAdmin();
+    // Purchases
+    match /purchases/{purchaseId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    // Sales
+    match /sales/{saleId} {
+      allow read: if isAdmin();
+      allow write: if false;
     }
   }
 }

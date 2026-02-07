@@ -12,18 +12,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 
 const registerSchema = z.object({
-  name: z.string().min(2, "Имя слишком короткое"),
   email: z.string().email("Некорректный email"),
-  phone: z.string().min(10, "Некорректный номер телефона"),
   password: z.string().min(6, "Пароль должен быть не менее 6 символов"),
-  confirmPassword: z.string()
-}).refine((data) => data.password === data.confirmPassword, {
-  message: "Пароли не совпадают",
-  path: ["confirmPassword"],
 });
 
 type RegisterFormValues = z.infer<typeof registerSchema>;
@@ -32,6 +26,8 @@ export function RegisterForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirectTo = searchParams.get("redirect") || "/account";
 
   const {
     register,
@@ -44,6 +40,22 @@ export function RegisterForm() {
   const onSubmit = async (data: RegisterFormValues) => {
     setLoading(true);
     try {
+      const storedGuestProfile = typeof window !== "undefined"
+        ? localStorage.getItem("guestOrderProfile")
+        : null;
+      let guestProfile: { name?: string; phone?: string; telegram?: string } | null = null;
+      if (storedGuestProfile) {
+        try {
+          guestProfile = JSON.parse(storedGuestProfile);
+        } catch {
+          guestProfile = null;
+        }
+      }
+      const rawTelegram = guestProfile?.telegram?.trim() || "";
+      const normalizedTelegram = rawTelegram
+        ? (rawTelegram.startsWith("@") ? rawTelegram : `@${rawTelegram}`)
+        : "";
+
       const userCredential = await createUserWithEmailAndPassword(auth, data.email, data.password);
       const user = userCredential.user;
 
@@ -51,12 +63,12 @@ export function RegisterForm() {
       await setDoc(doc(db, "users", user.uid), {
         uid: user.uid,
         email: data.email,
-        name: data.name,
-        phone: data.phone,
-        telegram: "",
+        name: guestProfile?.name || "",
+        phone: guestProfile?.phone || "",
+        telegram: normalizedTelegram,
         isAdmin: false,
         isBanned: false,
-        totalOrders: 0,
+        purchasesCount: 0,
         totalSpent: 0,
         loyaltyLevel: 0,
         loyaltyDiscount: 0,
@@ -64,10 +76,11 @@ export function RegisterForm() {
       });
 
       toast.success("Регистрация успешна!");
-      router.push("/account");
-    } catch (error: any) {
-      console.error(error);
-      if (error.code === "auth/email-already-in-use") {
+      router.push(redirectTo);
+    } catch (error) {
+      const err = error as { code?: string };
+      console.error(err);
+      if (err.code === "auth/email-already-in-use") {
         toast.error("Этот email уже используется");
       } else {
         toast.error("Ошибка при регистрации");
@@ -80,19 +93,6 @@ export function RegisterForm() {
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
       <div className="space-y-2">
-        <Label htmlFor="name">Имя</Label>
-        <Input
-          id="name"
-          placeholder="Иван Иванов"
-          {...register("name")}
-          className={errors.name ? "border-destructive focus-visible:ring-destructive" : ""}
-        />
-        {errors.name && (
-          <p className="text-xs text-destructive mt-1">{errors.name.message}</p>
-        )}
-      </div>
-
-      <div className="space-y-2">
         <Label htmlFor="email">Email</Label>
         <Input
           id="email"
@@ -103,19 +103,6 @@ export function RegisterForm() {
         />
         {errors.email && (
           <p className="text-xs text-destructive mt-1">{errors.email.message}</p>
-        )}
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="phone">Телефон</Label>
-        <Input
-          id="phone"
-          placeholder="+7 (999) 000-00-00"
-          {...register("phone")}
-          className={errors.phone ? "border-destructive focus-visible:ring-destructive" : ""}
-        />
-        {errors.phone && (
-          <p className="text-xs text-destructive mt-1">{errors.phone.message}</p>
         )}
       </div>
 
@@ -139,20 +126,6 @@ export function RegisterForm() {
         </div>
         {errors.password && (
           <p className="text-xs text-destructive mt-1">{errors.password.message}</p>
-        )}
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="confirmPassword">Подтвердите пароль</Label>
-        <Input
-          id="confirmPassword"
-          type="password"
-          placeholder="••••••"
-          {...register("confirmPassword")}
-          className={errors.confirmPassword ? "border-destructive focus-visible:ring-destructive" : ""}
-        />
-        {errors.confirmPassword && (
-          <p className="text-xs text-destructive mt-1">{errors.confirmPassword.message}</p>
         )}
       </div>
 

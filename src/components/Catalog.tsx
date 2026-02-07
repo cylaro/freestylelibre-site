@@ -1,145 +1,200 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import { collection, onSnapshot, query } from "firebase/firestore";
+import React, { useEffect, useRef, useState } from "react";
+import { collection, onSnapshot, query, where, orderBy } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { normalizeProduct, Product } from "@/lib/schemas";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useCart } from "@/contexts/CartContext";
-import { motion } from "framer-motion";
-
-export interface Product {
-  id: string;
-  name: string;
-  description: string;
-  price: number;
-  imageUrl: string;
-  inStock: boolean;
-  discountPercent: number;
-  features: string[];
-}
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
+import { Check } from "lucide-react";
+import Image from "next/image";
 
 export function Catalog() {
   const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [addedId, setAddedId] = useState<string | null>(null);
+  const resetTimerRef = useRef<number | null>(null);
   const { addItem } = useCart();
+  const reduceMotion = useReducedMotion();
 
   useEffect(() => {
-    const q = query(collection(db, "products"));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const prods = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
-      setProducts(prods);
-    });
+    const q = query(collection(db, "products"), where("active", "==", true), orderBy("sortOrder", "asc"));
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const prods = snapshot.docs.map(doc => normalizeProduct(doc.id, doc.data()));
+        setProducts(prods);
+        setLoading(false);
+        setError(null);
+      },
+      (err) => {
+        const message = err?.code === "failed-precondition"
+          ? "Для запроса нужен индекс Firestore. Создайте индекс и обновите страницу."
+          : "Не удалось загрузить каталог. Проверьте правила Firestore и подключение.";
+        setError(message);
+        setLoading(false);
+      }
+    );
 
     return () => unsubscribe();
   }, []);
 
-  // Default products if none in Firestore yet
-  const displayProducts = products.length > 0 ? products : [
-    {
-      id: "libre-2-ru",
-      name: "FreeStyle Libre 2 (RU)",
-      description: "Официальная российская версия. 14 дней работы, сигналы тревоги.",
-      price: 4990,
-      imageUrl: "https://images.unsplash.com/photo-1584017911766-d451b3d0e843?auto=format&fit=crop&q=80&w=400",
-      inStock: true,
-      discountPercent: 0,
-      features: ["14 дней", "Сигналы тревоги", "LibreLink RU"]
-    },
-    {
-      id: "libre-2-eu",
-      name: "FreeStyle Libre 2 (EU)",
-      description: "Европейская версия. Требует настройки (xDrip+ / патч).",
-      price: 4490,
-      imageUrl: "https://images.unsplash.com/photo-1584017911766-d451b3d0e843?auto=format&fit=crop&q=80&w=400",
-      inStock: true,
-      discountPercent: 5,
-      features: ["14 дней", "EU версия", "Выгодная цена"]
-    },
-    {
-      id: "libre-3-plus",
-      name: "FreeStyle Libre 3 Plus",
-      description: "Новинка 2026. Самый маленький, 15 дней работы, Bluetooth-трансляция.",
-      price: 6490,
-      imageUrl: "https://images.unsplash.com/photo-1584017911766-d451b3d0e843?auto=format&fit=crop&q=80&w=400",
-      inStock: true,
-      discountPercent: 0,
-      features: ["15 дней", "Bluetooth 24/7", "Ультра-компактный"]
+  useEffect(() => {
+    return () => {
+      if (resetTimerRef.current) {
+        window.clearTimeout(resetTimerRef.current);
+      }
+    };
+  }, []);
+
+  const handleAdd = (product: Product) => {
+    addItem(product, 1);
+    setAddedId(product.id);
+    if (resetTimerRef.current) {
+      window.clearTimeout(resetTimerRef.current);
     }
-  ];
+    resetTimerRef.current = window.setTimeout(() => {
+      setAddedId(current => current === product.id ? null : current);
+    }, 900);
+  };
 
   return (
-    <section id="catalog" className="py-24">
-      <div className="container mx-auto px-4">
+    <motion.section
+      id="catalog"
+      className="py-24"
+      initial={reduceMotion ? false : { opacity: 0, y: 24 }}
+      whileInView={reduceMotion ? undefined : { opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: "-80px" }}
+      transition={{ duration: 0.6, ease: "easeOut" }}
+    >
+      <div className="container">
         <div className="text-center mb-16">
           <h2 className="text-3xl md:text-5xl font-bold mb-4">Наш Каталог</h2>
           <p className="text-muted-foreground">Выберите подходящую модель для вашего комфорта</p>
         </div>
 
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {displayProducts.map((product) => (
-            <motion.div
-              key={product.id}
-              whileHover={{ y: -10 }}
-              transition={{ duration: 0.3 }}
-            >
-              <Card className="h-full overflow-hidden border-none shadow-lg glass">
-                <div className="aspect-square relative overflow-hidden group">
-                  <img 
-                    src={product.imageUrl} 
-                    alt={product.name}
-                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
-                  />
-                  {product.discountPercent > 0 && (
-                    <Badge className="absolute top-4 right-4 bg-orange-500">
-                      -{product.discountPercent}%
-                    </Badge>
-                  )}
-                  {!product.inStock && (
-                    <div className="absolute inset-0 bg-background/60 flex items-center justify-center backdrop-blur-[2px]">
-                      <Badge variant="secondary" className="text-lg px-4 py-1">Нет в наличии</Badge>
-                    </div>
-                  )}
-                </div>
-                <CardHeader>
-                  <div className="flex flex-wrap gap-2 mb-2">
-                    {product.features.map((f, i) => (
-                      <Badge key={i} variant="outline" className="text-[10px]">{f}</Badge>
-                    ))}
-                  </div>
-                  <CardTitle className="text-xl">{product.name}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-muted-foreground line-clamp-2 mb-4">
-                    {product.description}
-                  </p>
-                  <div className="flex items-center gap-3">
-                    <span className="text-2xl font-bold text-primary">
-                      {product.discountPercent > 0 
-                        ? Math.round(product.price * (1 - product.discountPercent / 100)) 
-                        : product.price} ₽
-                    </span>
+        {loading ? (
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="h-[420px] rounded-2xl border border-white/10 bg-background/50 animate-pulse" />
+            ))}
+          </div>
+        ) : error ? (
+          <div className="text-center text-red-500/90 py-12">{error}</div>
+        ) : products.length === 0 ? (
+          <div className="text-center text-muted-foreground py-12">
+            Каталог пуст. Выполните инициализацию товаров в админ-панели.
+          </div>
+        ) : (
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {products.map((product) => (
+              <motion.div
+                key={product.id}
+                whileHover={reduceMotion ? undefined : { y: -8 }}
+                transition={{ duration: 0.3 }}
+              >
+                <Card className="h-full overflow-hidden border border-white/10 shadow-lg bg-background/60 backdrop-blur-xl">
+                  <div className="aspect-square relative overflow-hidden group bg-muted/20">
+                    {product.imageUrl ? (
+                      <Image
+                        src={product.imageUrl}
+                        alt={product.name}
+                        fill
+                        sizes="(max-width: 1024px) 100vw, 33vw"
+                        className="object-cover transition-transform duration-500 group-hover:scale-105"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-muted-foreground text-sm">
+                        Изображение недоступно
+                      </div>
+                    )}
                     {product.discountPercent > 0 && (
-                      <span className="text-muted-foreground line-through text-sm">
-                        {product.price} ₽
-                      </span>
+                      <Badge className="absolute top-4 right-4 bg-orange-500">
+                        -{product.discountPercent}%
+                      </Badge>
+                    )}
+                    {!product.inStock && (
+                      <div className="absolute inset-0 bg-background/60 flex items-center justify-center backdrop-blur-[2px]">
+                        <Badge variant="secondary" className="text-lg px-4 py-1">Нет в наличии</Badge>
+                      </div>
                     )}
                   </div>
-                </CardContent>
-                <CardFooter>
-                  <Button 
-                    className="w-full" 
-                    disabled={!product.inStock}
-                    onClick={() => addItem({ ...product, quantity: 1 })}
-                  >
-                    В корзину
-                  </Button>
-                </CardFooter>
-              </Card>
-            </motion.div>
-          ))}
-        </div>
+                  <CardHeader>
+                    {product.features.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mb-2">
+                        {product.features.map((f, i) => (
+                          <Badge key={i} variant="outline" className="text-[10px]">{f}</Badge>
+                        ))}
+                      </div>
+                    )}
+                    <CardTitle className="text-xl">{product.name}</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-sm text-muted-foreground line-clamp-2 mb-4">
+                      {product.description}
+                    </p>
+                    <div className="flex items-center gap-3">
+                      <span className="text-2xl font-bold text-primary">
+                        {product.discountPercent > 0 
+                          ? Math.round(product.price * (1 - product.discountPercent / 100)) 
+                          : product.price} ₽
+                      </span>
+                      {product.discountPercent > 0 && (
+                        <span className="text-muted-foreground line-through text-sm">
+                          {product.price} ₽
+                        </span>
+                      )}
+                    </div>
+                  </CardContent>
+                  <CardFooter>
+                    <motion.div
+                      className="w-full"
+                      whileTap={reduceMotion ? undefined : { scale: 0.97 }}
+                      whileHover={reduceMotion ? undefined : { scale: 1.01 }}
+                    >
+                      <Button 
+                        className="w-full"
+                        disabled={!product.inStock}
+                        onClick={() => handleAdd(product)}
+                      >
+                        <AnimatePresence mode="wait" initial={false}>
+                          {addedId === product.id ? (
+                            <motion.span
+                              key="added"
+                              initial={reduceMotion ? false : { opacity: 0, y: 6 }}
+                              animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
+                              exit={reduceMotion ? undefined : { opacity: 0, y: -6 }}
+                              transition={{ duration: 0.2 }}
+                              className="inline-flex items-center gap-2"
+                            >
+                              <Check className="w-4 h-4" />
+                              Добавлено
+                            </motion.span>
+                          ) : (
+                            <motion.span
+                              key="add"
+                              initial={reduceMotion ? false : { opacity: 0, y: 6 }}
+                              animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
+                              exit={reduceMotion ? undefined : { opacity: 0, y: -6 }}
+                              transition={{ duration: 0.2 }}
+                            >
+                              В корзину
+                            </motion.span>
+                          )}
+                        </AnimatePresence>
+                      </Button>
+                    </motion.div>
+                  </CardFooter>
+                </Card>
+              </motion.div>
+            ))}
+          </div>
+        )}
       </div>
-    </section>
+    </motion.section>
   );
 }

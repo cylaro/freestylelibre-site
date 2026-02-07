@@ -75,6 +75,9 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+  --page-bg: radial-gradient(1200px 800px at 10% -10%, oklch(0.97 0.03 260 / 0.55), transparent 60%),
+    radial-gradient(900px 700px at 90% 0%, oklch(0.95 0.04 200 / 0.45), transparent 55%),
+    linear-gradient(180deg, oklch(0.99 0 0), oklch(0.98 0 0));
 }
 
 .dark {
@@ -109,6 +112,9 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+  --page-bg: radial-gradient(1000px 700px at 10% -20%, oklch(0.35 0.08 260 / 0.25), transparent 60%),
+    radial-gradient(900px 700px at 90% -10%, oklch(0.35 0.05 200 / 0.2), transparent 55%),
+    linear-gradient(180deg, oklch(0.14 0 0), oklch(0.12 0 0));
 }
 
 @layer base {
@@ -116,11 +122,39 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply text-foreground;
+    background: var(--page-bg);
+    min-height: 100%;
+    overflow-x: hidden;
+  }
+  html {
+    scroll-behavior: smooth;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+  }
+  section[id] {
+    scroll-margin-top: 96px;
+  }
+  .container {
+    @apply mx-auto w-full max-w-[1200px] px-4 sm:px-6 lg:px-8;
   }
 }
 
 /* Hide Next.js error overlay portal */
 nextjs-portal {
   display: none !important;
+}
+
+/* Clean numeric input spinners */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type="number"] {
+  -moz-appearance: textfield;
 }

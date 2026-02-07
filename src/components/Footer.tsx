@@ -6,8 +6,8 @@ import { Send, MapPin } from "lucide-react";
 
 export function Footer() {
   return (
-    <footer className="bg-background border-t py-12">
-      <div className="container mx-auto px-4 grid md:grid-cols-3 gap-8 text-center md:text-left">
+    <footer className="border-t border-white/10 py-12">
+      <div className="container grid md:grid-cols-3 gap-8 text-center md:text-left">
         <div className="space-y-4">
           <h3 className="text-xl font-bold bg-gradient-to-r from-primary to-blue-600 bg-clip-text text-transparent inline-block">
             FreeStyle Store
@@ -43,7 +43,7 @@ export function Footer() {
           </ul>
         </div>
       </div>
-      <div className="container mx-auto px-4 mt-12 pt-8 border-t text-center text-sm text-muted-foreground">
+      <div className="container mt-12 pt-8 border-t border-white/10 text-center text-sm text-muted-foreground">
         © {new Date().getFullYear()} FreeStyle Store. Все права защищены.
       </div>
     </footer>

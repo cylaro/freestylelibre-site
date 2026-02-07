@@ -10,7 +10,8 @@ import {
   Dialog, 
   DialogContent, 
   DialogHeader, 
-  DialogTitle 
+  DialogTitle,
+  DialogDescription
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -69,9 +70,10 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
       // Reset form
       setEmail("");
       setPassword("");
-    } catch (error: any) {
-      console.error("Auth error:", error.code, error.message);
-      toast.error(mapAuthErrorToRussian(error.code));
+    } catch (error) {
+      const err = error as { code?: string; message?: string };
+      console.error("Auth error:", err.code, err.message);
+      toast.error(mapAuthErrorToRussian(err.code || "unknown"));
     } finally {
       setLoading(false);
     }
@@ -99,11 +101,11 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
             <DialogTitle className="text-3xl font-bold tracking-tight">
               {isLogin ? "С возвращением" : "Создать аккаунт"}
             </DialogTitle>
-            <p className="text-muted-foreground mt-2">
+            <DialogDescription className="text-muted-foreground mt-2">
               {isLogin 
                 ? "Войдите в свой аккаунт, чтобы продолжить покупки." 
                 : "Зарегистрируйтесь, чтобы отслеживать заказы и копить скидки."}
-            </p>
+            </DialogDescription>
           </DialogHeader>
 
           <form onSubmit={handleSubmit} className="space-y-6">

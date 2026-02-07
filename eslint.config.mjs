@@ -11,7 +11,7 @@ const compat = new FlatCompat({
 
 const eslintConfig = [
   {
-    ignores: [".next/", "next-env.d.ts"],
+    ignores: [".next/", "out/", "next-env.d.ts", "worker/", "functions/"],
   },
   ...compat.extends("next/core-web-vitals", "next/typescript"),
 ];

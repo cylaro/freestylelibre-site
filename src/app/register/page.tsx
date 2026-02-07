@@ -1,6 +1,7 @@
 import { AuthLayout } from "@/components/auth/AuthLayout";
 import { RegisterForm } from "@/components/auth/RegisterForm";
 import { Metadata } from "next";
+import { Suspense } from "react";
 
 export const metadata: Metadata = {
   title: "Регистрация | FreeStyle Store",
@@ -13,7 +14,9 @@ export default function RegisterPage() {
       title="Создать аккаунт" 
       subtitle="Присоединяйтесь к нашей системе лояльности"
     >
-      <RegisterForm />
+      <Suspense fallback={<div className="text-center text-muted-foreground">Загрузка формы...</div>}>
+        <RegisterForm />
+      </Suspense>
     </AuthLayout>
   );
 }
