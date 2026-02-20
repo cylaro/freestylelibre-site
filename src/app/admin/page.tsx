@@ -3,19 +3,10 @@
 import React, { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { Navbar } from "@/components/Navbar";
 import { useAuth } from "@/contexts/AuthContext";
-import { db } from "@/lib/firebase";
 import { normalizeOrder, normalizeProduct, normalizePurchase, normalizeReview, normalizeSale, normalizeSettings, normalizeUser, settingsDefaults, Order, Product, Purchase, Review, Sale, SettingsConfig, UserProfile } from "@/lib/schemas";
 import { callWorker, getWorkerBaseUrls } from "@/lib/workerClient";
 import { formatTimestamp } from "@/lib/utils";
 import { getAuthToken } from "@/lib/authToken";
-import { 
-  collection, 
-  query, 
-  orderBy, 
-  doc, 
-  onSnapshot,
-  where
-} from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NumericInput } from "@/components/ui/numeric-input";
@@ -647,103 +638,63 @@ export default function AdminPage() {
     );
   }, [sales, normalizedQuery]);
 
-  useEffect(() => {
-    if (!profile?.isAdmin) return;
+  const loadAdminData = useCallback(async () => {
+    if (!profile?.isAdmin || !user) return;
+    try {
+      const token = await getAuthToken(user);
+      const response = await callWorker<{
+        orders?: unknown[];
+        products?: unknown[];
+        users?: unknown[];
+        reviews?: unknown[];
+        purchases?: unknown[];
+        sales?: unknown[];
+        settings?: unknown;
+      }>("/api/admin/bootstrap", token, "GET");
 
-    const unsubOrders = onSnapshot(
-      query(collection(db, "orders"), orderBy("createdAt", "desc")),
-      (snap) => {
-        setOrders(snap.docs.map(doc => normalizeOrder(doc.id, doc.data())));
-      },
-      (error) => {
-        pushLog("error", "Firestore: заказы", error?.message || "Ошибка загрузки заказов");
-      }
-    );
-
-    const unsubProducts = onSnapshot(
-      query(collection(db, "products"), where("active", "==", true), orderBy("sortOrder", "asc")),
-      (snap) => {
-        setProducts(snap.docs.map(doc => normalizeProduct(doc.id, doc.data())));
-      },
-      (error) => {
-        pushLog("error", "Firestore: товары", error?.message || "Ошибка загрузки товаров");
-      }
-    );
-
-    const unsubUsers = onSnapshot(
-      collection(db, "users"),
-      (snap) => {
-        setUsers(
-          snap.docs.map(docSnap => {
-            const data = docSnap.data();
-            return normalizeUser(data, { uid: docSnap.id, email: data.email || "" });
+      const nextOrders = Array.isArray(response.orders)
+        ? response.orders.map((item, index) => normalizeOrder(String((item as { id?: string })?.id || `o-${index}`), item))
+        : [];
+      const nextProducts = Array.isArray(response.products)
+        ? response.products.map((item, index) => normalizeProduct(String((item as { id?: string })?.id || `p-${index}`), item))
+        : [];
+      const nextUsers = Array.isArray(response.users)
+        ? response.users.map((item, index) => {
+            const raw = item as Record<string, unknown>;
+            const uid = String(raw.uid || raw.id || `u-${index}`);
+            return normalizeUser(raw, { uid, email: String(raw.email || "") });
           })
-        );
-      },
-      (error) => {
-        pushLog("error", "Firestore: клиенты", error?.message || "Ошибка загрузки клиентов");
-      }
-    );
+        : [];
+      const nextReviews = Array.isArray(response.reviews)
+        ? response.reviews.map((item, index) => normalizeReview(String((item as { id?: string })?.id || `r-${index}`), item))
+        : [];
+      const nextPurchases = Array.isArray(response.purchases)
+        ? response.purchases.map((item, index) => normalizePurchase(String((item as { id?: string })?.id || `pc-${index}`), item))
+        : [];
+      const nextSales = Array.isArray(response.sales)
+        ? response.sales.map((item, index) => normalizeSale(String((item as { id?: string })?.id || `s-${index}`), item))
+        : [];
+      const nextSettings = response.settings ? normalizeSettings(response.settings) : settingsDefaults;
 
-    const unsubReviews = onSnapshot(
-      query(collection(db, "reviews"), orderBy("createdAt", "desc")),
-      (snap) => {
-        setReviews(snap.docs.map(doc => normalizeReview(doc.id, doc.data())));
-      },
-      (error) => {
-        pushLog("error", "Firestore: отзывы", error?.message || "Ошибка загрузки отзывов");
-      }
-    );
+      setOrders(nextOrders);
+      setProducts(nextProducts);
+      setUsers(nextUsers);
+      setReviews(nextReviews);
+      setPurchases(nextPurchases);
+      setSales(nextSales);
+      setSettingsDraft(nextSettings);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Ошибка загрузки данных админки";
+      pushLog("error", "Worker: загрузка админки", message);
+    }
+  }, [profile, user, pushLog]);
 
-    const unsubPurchases = onSnapshot(
-      collection(db, "purchases"),
-      (snap) => {
-        const items = snap.docs.map(doc => normalizePurchase(doc.id, doc.data()));
-        items.sort((a, b) => (toDateValue(b.date)?.getTime() || 0) - (toDateValue(a.date)?.getTime() || 0));
-        setPurchases(items);
-      },
-      (error) => {
-        pushLog("error", "Firestore: закупки", error?.message || "Ошибка загрузки закупок");
-      }
-    );
-
-    const unsubSales = onSnapshot(
-      collection(db, "sales"),
-      (snap) => {
-        const items = snap.docs.map(doc => normalizeSale(doc.id, doc.data()));
-        items.sort(
-          (a, b) =>
-            (toDateValue(b.createdAt)?.getTime() || toDateValue(b.date)?.getTime() || 0) -
-            (toDateValue(a.createdAt)?.getTime() || toDateValue(a.date)?.getTime() || 0)
-        );
-        setSales(items);
-      },
-      (error) => {
-        pushLog("error", "Firestore: продажи", error?.message || "Ошибка загрузки продаж");
-      }
-    );
-
-    const unsubSettings = onSnapshot(
-      doc(db, "settings", "config"),
-      (snap) => {
-        const data = snap.exists() ? normalizeSettings(snap.data()) : settingsDefaults;
-        setSettingsDraft(data);
-      },
-      (error) => {
-        pushLog("error", "Firestore: настройки", error?.message || "Ошибка загрузки настроек");
-      }
-    );
-
-    return () => {
-      unsubOrders();
-      unsubProducts();
-      unsubUsers();
-      unsubReviews();
-      unsubPurchases();
-      unsubSales();
-      unsubSettings();
-    };
-  }, [profile, pushLog]);
+  useEffect(() => {
+    if (!profile?.isAdmin || !user) return;
+    loadAdminData();
+    const timer = window.setInterval(loadAdminData, 20000);
+    return () => window.clearInterval(timer);
+  }, [profile, user, loadAdminData]);
 
   useEffect(() => {
     if (!profile?.isAdmin || !user) return;
@@ -827,6 +778,7 @@ export default function AdminPage() {
         const token = await getAuthToken(user);
         await callWorkerWithLog(`/api/admin/orders/${orderId}/status`, token, "POST", { status: newStatus }, "Отмена заказа");
         toast.success("Заказ отменен и удален");
+        await loadAdminData();
       } catch (error) {
         const message = error instanceof Error ? error.message : "Ошибка удаления";
         toast.error(message);
@@ -841,6 +793,7 @@ export default function AdminPage() {
       const token = await getAuthToken(user);
       await callWorkerWithLog(`/api/admin/orders/${orderId}/status`, token, "POST", { status: newStatus }, "Статус заказа");
       toast.success(`Статус обновлен: ${getOrderStatusInfo(newStatus).label}`);
+      await loadAdminData();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Ошибка обновления";
       toast.error(message);
@@ -913,6 +866,7 @@ export default function AdminPage() {
       );
       toast.success("Заказ обновлен");
       setOrderEditOpen(false);
+      await loadAdminData();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Ошибка обновления заказа";
       toast.error(message);
@@ -927,6 +881,7 @@ export default function AdminPage() {
         status: action === "approve" ? "approved" : "rejected",
       }, "Модерация отзыва");
       toast.success(`Отзыв ${action === "approve" ? "одобрен" : "отклонен"}`);
+      await loadAdminData();
     } catch {
       toast.error("Ошибка");
     }
@@ -949,6 +904,7 @@ export default function AdminPage() {
       }, "Редактирование отзыва");
       toast.success("Отзыв обновлен");
       setReviewDialogOpen(false);
+      await loadAdminData();
     } catch {
       toast.error("Ошибка обновления отзыва");
     }
@@ -987,6 +943,7 @@ export default function AdminPage() {
       }, "Обновление клиента");
       toast.success("Профиль клиента обновлен");
       setUserDialogOpen(false);
+      await loadAdminData();
     } catch {
       toast.error("Ошибка обновления клиента");
     }
@@ -999,6 +956,7 @@ export default function AdminPage() {
       const token = await getAuthToken(user);
       await callWorkerWithLog("/api/admin/seed", token, "POST", undefined, "Seed БД");
       toast.success("Данные успешно инициализированы!");
+      await loadAdminData();
     } catch {
       toast.error("Ошибка сидирования");
     } finally {
@@ -1063,6 +1021,7 @@ export default function AdminPage() {
       }
       toast.success("Товар сохранен");
       setProductDialogOpen(false);
+      await loadAdminData();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Ошибка сохранения товара";
       toast.error(message);
@@ -1077,6 +1036,7 @@ export default function AdminPage() {
       const token = await getAuthToken(user);
       await callWorkerWithLog(`/api/admin/products/${productId}`, token, "DELETE", undefined, "Удаление товара");
       toast.success("Товар удален");
+      await loadAdminData();
     } catch {
       toast.error("Ошибка удаления товара");
     }
@@ -1149,6 +1109,7 @@ export default function AdminPage() {
       }
       toast.success("Закупка сохранена");
       setPurchaseDialogOpen(false);
+      await loadAdminData();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Ошибка сохранения закупки";
       toast.error(message);
@@ -1176,6 +1137,7 @@ export default function AdminPage() {
       }
       toast.success("Продажа сохранена");
       setSaleDialogOpen(false);
+      await loadAdminData();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Ошибка сохранения продажи";
       toast.error(message);
@@ -1190,6 +1152,7 @@ export default function AdminPage() {
       const token = await getAuthToken(user);
       await callWorkerWithLog(`/api/admin/purchases/${purchaseId}`, token, "DELETE", undefined, "Удаление закупки");
       toast.success("Закупка удалена");
+      await loadAdminData();
     } catch {
       toast.error("Ошибка удаления закупки");
     }
@@ -1201,6 +1164,7 @@ export default function AdminPage() {
       const token = await getAuthToken(user);
       await callWorkerWithLog(`/api/admin/sales/${saleId}`, token, "DELETE", undefined, "Удаление продажи");
       toast.success("Продажа удалена");
+      await loadAdminData();
     } catch {
       toast.error("Ошибка удаления продажи");
     }
@@ -1253,6 +1217,7 @@ export default function AdminPage() {
         media,
       }, "Настройки");
       toast.success("Настройки сохранены");
+      await loadAdminData();
     } catch {
       toast.error("Ошибка сохранения настроек");
     }

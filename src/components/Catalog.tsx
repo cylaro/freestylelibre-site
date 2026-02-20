@@ -1,8 +1,6 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
-import { collection, onSnapshot, query, where, orderBy } from "firebase/firestore";
-import { db } from "@/lib/firebase";
 import { normalizeProduct, Product } from "@/lib/schemas";
 import { callWorker } from "@/lib/workerClient";
 import { Button } from "@/components/ui/button";
@@ -24,47 +22,25 @@ export function Catalog() {
 
   useEffect(() => {
     let mounted = true;
-    let hasData = false;
 
     const loadViaWorker = async () => {
       try {
         const result = await callWorker<{ products?: unknown[] }>("/api/public/products", undefined, "GET");
         if (!mounted || !Array.isArray(result.products)) return;
         setProducts(result.products.map((item, index) => normalizeProduct(String((item as { id?: string })?.id || `p-${index}`), item)));
-        hasData = true;
         setLoading(false);
         setError(null);
-      } catch {
-        // Firestore realtime listener below remains fallback source.
+      } catch (error) {
+        if (!mounted) return;
+        setLoading(false);
+        setError(error instanceof Error ? error.message : "Не удалось загрузить каталог");
       }
     };
 
     loadViaWorker();
 
-    const q = query(collection(db, "products"), where("active", "==", true), orderBy("sortOrder", "asc"));
-    const unsubscribe = onSnapshot(
-      q,
-      (snapshot) => {
-        const prods = snapshot.docs.map(doc => normalizeProduct(doc.id, doc.data()));
-        hasData = true;
-        setProducts(prods);
-        setLoading(false);
-        setError(null);
-      },
-      (err) => {
-        const message = err?.code === "failed-precondition"
-          ? "Для запроса нужен индекс Firestore. Создайте индекс и обновите страницу."
-          : "Не удалось загрузить каталог. Проверьте правила Firestore и подключение.";
-        if (!hasData) {
-          setError(message);
-          setLoading(false);
-        }
-      }
-    );
-
     return () => {
       mounted = false;
-      unsubscribe();
     };
   }, []);
 

@@ -5,8 +5,9 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { createUserWithEmailAndPassword } from "firebase/auth";
-import { auth, db } from "@/lib/firebase";
-import { doc, setDoc, Timestamp } from "firebase/firestore";
+import { auth } from "@/lib/firebase";
+import { callWorker } from "@/lib/workerClient";
+import { getAuthToken } from "@/lib/authToken";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -59,20 +60,11 @@ export function RegisterForm() {
       const userCredential = await createUserWithEmailAndPassword(auth, data.email, data.password);
       const user = userCredential.user;
 
-      // Create user profile in Firestore
-      await setDoc(doc(db, "users", user.uid), {
-        uid: user.uid,
-        email: data.email,
+      const token = await getAuthToken(user);
+      await callWorker("/api/user/profile/update", token, "POST", {
         name: guestProfile?.name || "",
         phone: guestProfile?.phone || "",
         telegram: normalizedTelegram,
-        isAdmin: false,
-        isBanned: false,
-        purchasesCount: 0,
-        totalSpent: 0,
-        loyaltyLevel: 0,
-        loyaltyDiscount: 0,
-        createdAt: Timestamp.now()
       });
 
       toast.success("Регистрация успешна!");

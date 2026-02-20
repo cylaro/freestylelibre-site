@@ -564,6 +564,26 @@ function parseDateInput(value?: string, fallback = new Date()) {
   return date;
 }
 
+function toDate(value: any): Date | null {
+  if (!value) return null;
+  if (value instanceof Date) return value;
+  if (typeof value === "string" || typeof value === "number") {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+  if (typeof value === "object") {
+    if (typeof value.toDate === "function") {
+      const parsed = value.toDate();
+      return parsed instanceof Date && !Number.isNaN(parsed.getTime()) ? parsed : null;
+    }
+    if (typeof value.seconds === "number") {
+      const parsed = new Date(value.seconds * 1000);
+      return Number.isNaN(parsed.getTime()) ? null : parsed;
+    }
+  }
+  return null;
+}
+
 function escapeHtml(value: string) {
   return value
     .replace(/&/g, "&amp;")
@@ -1171,6 +1191,31 @@ app.get("/api/public/products", async (c) => {
   }
 });
 
+app.get("/api/public/reviews", async (c) => {
+  try {
+    const reviews = await firestoreRunQuery(c.env, {
+      from: [{ collectionId: "reviews" }],
+      where: {
+        fieldFilter: {
+          field: { fieldPath: "status" },
+          op: "EQUAL",
+          value: { stringValue: "approved" },
+        },
+      },
+      limit: 6,
+    });
+    reviews.sort((a, b) => {
+      const aTime = toDate(a.createdAt)?.getTime() || 0;
+      const bTime = toDate(b.createdAt)?.getTime() || 0;
+      return bTime - aTime;
+    });
+    c.header("Cache-Control", "public, max-age=30");
+    return c.json({ ok: true, reviews });
+  } catch (error: any) {
+    return handleError(c, error, "Ошибка загрузки отзывов");
+  }
+});
+
 app.get("/api/admin/status", async (c) => {
   try {
     await requireAdmin(c);
@@ -1634,6 +1679,74 @@ app.get("/api/user/profile", async (c) => {
   }
 });
 
+app.get("/api/account/bootstrap", async (c) => {
+  try {
+    const user = await requireAuth(c);
+    const [orders, reviews, products, settings, profile] = await Promise.all([
+      firestoreRunQuery(c.env, {
+        from: [{ collectionId: "orders" }],
+        where: {
+          fieldFilter: {
+            field: { fieldPath: "userId" },
+            op: "EQUAL",
+            value: { stringValue: user.uid },
+          },
+        },
+      }),
+      firestoreRunQuery(c.env, {
+        from: [{ collectionId: "reviews" }],
+        where: {
+          fieldFilter: {
+            field: { fieldPath: "userId" },
+            op: "EQUAL",
+            value: { stringValue: user.uid },
+          },
+        },
+      }),
+      firestoreRunQuery(c.env, {
+        from: [{ collectionId: "products" }],
+        where: {
+          fieldFilter: {
+            field: { fieldPath: "active" },
+            op: "EQUAL",
+            value: { booleanValue: true },
+          },
+        },
+      }),
+      firestoreGet(c.env, "settings/config"),
+      ensureUserProfile(c.env, user.uid, user.email || ""),
+    ]);
+
+    orders.sort((a, b) => (toDate(b.createdAt)?.getTime() || 0) - (toDate(a.createdAt)?.getTime() || 0));
+    reviews.sort((a, b) => (toDate(b.createdAt)?.getTime() || 0) - (toDate(a.createdAt)?.getTime() || 0));
+    products.sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0));
+
+    const normalizedSettings = {
+      ...defaultSettings,
+      ...(settings || {}),
+      media: {
+        heroImageUrl: sanitizeImageUrl(settings?.media?.heroImageUrl, DEFAULT_HERO_IMAGE),
+        guideImageUrl: sanitizeImageUrl(settings?.media?.guideImageUrl, DEFAULT_PRODUCT_IMAGE),
+      },
+    };
+    const normalizedProducts = products.map((item) => ({
+      ...item,
+      imageUrl: sanitizeImageUrl(item.imageUrl, DEFAULT_PRODUCT_IMAGE),
+    }));
+
+    return c.json({
+      ok: true,
+      orders,
+      reviews,
+      products: normalizedProducts,
+      settings: normalizedSettings,
+      profile,
+    });
+  } catch (error: any) {
+    return handleError(c, error, "Ошибка загрузки кабинета");
+  }
+});
+
 app.post("/api/user/profile/update", async (c) => {
   try {
     const user = await requireAuth(c);
@@ -1652,6 +1765,62 @@ app.post("/api/user/profile/update", async (c) => {
     return c.json({ ok: true });
   } catch (error: any) {
     return handleError(c, error, "Ошибка обновления профиля");
+  }
+});
+
+app.get("/api/admin/bootstrap", async (c) => {
+  try {
+    await requireAdmin(c);
+    const [orders, products, users, reviews, purchases, sales, settings] = await Promise.all([
+      firestoreRunQuery(c.env, { from: [{ collectionId: "orders" }] }),
+      firestoreRunQuery(c.env, {
+        from: [{ collectionId: "products" }],
+        where: {
+          fieldFilter: {
+            field: { fieldPath: "active" },
+            op: "EQUAL",
+            value: { booleanValue: true },
+          },
+        },
+      }),
+      firestoreRunQuery(c.env, { from: [{ collectionId: "users" }] }),
+      firestoreRunQuery(c.env, { from: [{ collectionId: "reviews" }] }),
+      firestoreRunQuery(c.env, { from: [{ collectionId: "purchases" }] }),
+      firestoreRunQuery(c.env, { from: [{ collectionId: "sales" }] }),
+      firestoreGet(c.env, "settings/config"),
+    ]);
+
+    orders.sort((a, b) => (toDate(b.createdAt)?.getTime() || 0) - (toDate(a.createdAt)?.getTime() || 0));
+    products.sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0));
+    reviews.sort((a, b) => (toDate(b.createdAt)?.getTime() || 0) - (toDate(a.createdAt)?.getTime() || 0));
+    purchases.sort((a, b) => (toDate(b.date || b.createdAt)?.getTime() || 0) - (toDate(a.date || a.createdAt)?.getTime() || 0));
+    sales.sort((a, b) => (toDate(b.createdAt || b.date)?.getTime() || 0) - (toDate(a.createdAt || a.date)?.getTime() || 0));
+
+    const normalizedSettings = {
+      ...defaultSettings,
+      ...(settings || {}),
+      media: {
+        heroImageUrl: sanitizeImageUrl(settings?.media?.heroImageUrl, DEFAULT_HERO_IMAGE),
+        guideImageUrl: sanitizeImageUrl(settings?.media?.guideImageUrl, DEFAULT_PRODUCT_IMAGE),
+      },
+    };
+    const normalizedProducts = products.map((item) => ({
+      ...item,
+      imageUrl: sanitizeImageUrl(item.imageUrl, DEFAULT_PRODUCT_IMAGE),
+    }));
+
+    return c.json({
+      ok: true,
+      orders,
+      products: normalizedProducts,
+      users,
+      reviews,
+      purchases,
+      sales,
+      settings: normalizedSettings,
+    });
+  } catch (error: any) {
+    return handleError(c, error, "Ошибка загрузки админки");
   }
 });
 
