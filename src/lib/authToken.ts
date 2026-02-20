@@ -52,27 +52,29 @@ function isTokenActive(token: string, nowSec = Math.floor(Date.now() / 1000)) {
 }
 
 export async function getAuthToken(user: User) {
-  try {
-    const token = await user.getIdToken();
-    if (isTokenActive(token)) {
-      saveCachedToken(token);
-      return token;
-    }
-  } catch {
-    // Fallback handled below.
-  }
+  const now = Math.floor(Date.now() / 1000);
 
   const memoryToken = (user as unknown as { stsTokenManager?: { accessToken?: string } })
     ?.stsTokenManager
     ?.accessToken;
-  if (memoryToken && isTokenActive(memoryToken)) {
+  if (memoryToken && isTokenActive(memoryToken, now)) {
     saveCachedToken(memoryToken);
     return memoryToken;
   }
 
   const cached = readCachedToken();
-  if (cached?.token && cached.exp > Math.floor(Date.now() / 1000) + 30) {
+  if (cached?.token && cached.exp > now + 30) {
     return cached.token;
+  }
+
+  try {
+    const token = await user.getIdToken(false);
+    if (isTokenActive(token, now)) {
+      saveCachedToken(token);
+      return token;
+    }
+  } catch {
+    // Fallback handled below.
   }
 
   throw new Error("Не удалось получить токен авторизации");

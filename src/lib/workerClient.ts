@@ -8,6 +8,10 @@ const DEFAULT_WORKER_URLS = [
   "https://freestyle-store-worker.scheglovvrn.workers.dev",
 ];
 
+const DEPRECATED_WORKER_URLS = new Set([
+  "https://freestyle-store-worker.scheglovvrn.workers.dev",
+]);
+
 function normalizeUrl(value?: string) {
   if (!value) return "";
   return value.trim().replace(/\/+$/, "");
@@ -27,7 +31,10 @@ function uniq(values: string[]) {
 export function getWorkerBaseUrls() {
   const configured = normalizeUrl(process.env.NEXT_PUBLIC_WORKER_URL);
   const fallback = normalizeUrl(process.env.NEXT_PUBLIC_WORKER_FALLBACK_URL);
-  return uniq([configured, fallback, ...DEFAULT_WORKER_URLS.map(normalizeUrl)]);
+  const defaults = DEFAULT_WORKER_URLS.map(normalizeUrl);
+  const preferred = [configured, fallback].filter((url) => url && !DEPRECATED_WORKER_URLS.has(url));
+  const deprecated = [configured, fallback].filter((url) => url && DEPRECATED_WORKER_URLS.has(url));
+  return uniq([...defaults, ...preferred, ...deprecated]);
 }
 
 async function fetchWithTimeout(input: string, init: RequestInit, timeoutMs: number) {
@@ -45,7 +52,7 @@ export async function callWorker<T extends Record<string, unknown> = Record<stri
   token?: string | null,
   method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" = "POST",
   body?: Record<string, unknown>,
-  timeoutMs = 12000
+  timeoutMs = 5000
 ): Promise<WorkerResponse<T>> {
   const workerUrls = getWorkerBaseUrls();
   if (workerUrls.length === 0) {
