@@ -17,7 +17,10 @@ const geistMono = Geist_Mono({
 });
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://freestyle-libre-shop.github.io";
-const ogImage = process.env.NEXT_PUBLIC_OG_IMAGE || "https://images.unsplash.com/photo-1631549916768-4119b295f78b?auto=format&fit=crop&q=80&w=1200";
+const rawOgImage = process.env.NEXT_PUBLIC_OG_IMAGE || "";
+const ogImage = rawOgImage.includes("images.unsplash.com") || !rawOgImage
+  ? "/images/og-default.svg"
+  : rawOgImage;
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),

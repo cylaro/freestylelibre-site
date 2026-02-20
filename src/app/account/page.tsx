@@ -7,13 +7,14 @@ import { useAuth } from "@/contexts/AuthContext";
 import { db } from "@/lib/firebase";
 import { normalizeOrder, normalizeProduct, normalizeReview, normalizeSettings, settingsDefaults, Order, Product, Review, SettingsConfig } from "@/lib/schemas";
 import { formatTimestamp } from "@/lib/utils";
+import { callWorker } from "@/lib/workerClient";
+import { getAuthToken } from "@/lib/authToken";
 import Link from "next/link";
 import {
   collection,
   query,
   where,
   orderBy,
-  updateDoc,
   doc,
   onSnapshot
 } from "firebase/firestore";
@@ -174,32 +175,20 @@ export default function AccountPage() {
 
     const claim = async () => {
       try {
-        const idToken = await user.getIdToken();
-        const workerUrl = process.env.NEXT_PUBLIC_WORKER_URL || "https://freestyle-store-worker.scheglovvrn.workers.dev";
-        const response = await fetch(`${workerUrl}/api/order/claim`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${idToken}`,
-          },
-          body: JSON.stringify({
-            orderId: guestOrderId,
-          }),
+        const idToken = await getAuthToken(user);
+        await callWorker("/api/order/claim", idToken, "POST", {
+          orderId: guestOrderId,
         });
-        const result = await response.json().catch(() => ({})) as { error?: string };
-        if (!response.ok) {
-          if (result.error?.toLowerCase?.().includes("уже привязан")) {
-            localStorage.removeItem("guestOrderId");
-            localStorage.removeItem("guestOrderProfile");
-            return;
-          }
-          throw new Error(result.error || "Ошибка привязки заказа");
-        }
         localStorage.removeItem("guestOrderId");
         localStorage.removeItem("guestOrderProfile");
         toast.success("Заказ привязан к аккаунту");
       } catch (error) {
         const message = error instanceof Error ? error.message : "Не удалось привязать заказ";
+        if (message.toLowerCase().includes("уже привязан")) {
+          localStorage.removeItem("guestOrderId");
+          localStorage.removeItem("guestOrderProfile");
+          return;
+        }
         console.error(message);
       }
     };
@@ -215,13 +204,16 @@ export default function AccountPage() {
       const normalizedTelegram = editProfile.telegram?.trim()
         ? (editProfile.telegram.trim().startsWith("@") ? editProfile.telegram.trim() : `@${editProfile.telegram.trim()}`)
         : "";
-      await updateDoc(doc(db, "users", user.uid), {
-        ...editProfile,
+      const idToken = await getAuthToken(user);
+      await callWorker("/api/user/profile/update", idToken, "POST", {
+        name: editProfile.name || "",
+        phone: editProfile.phone || "",
         telegram: normalizedTelegram,
       });
       toast.success("Профиль обновлен");
-    } catch {
-      toast.error("Ошибка при обновлении");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Ошибка при обновлении";
+      toast.error(message);
     } finally {
       setSaving(false);
     }
@@ -230,22 +222,12 @@ export default function AccountPage() {
   const handleSubmitReview = async () => {
     if (!user || !selectedOrderId) return;
     try {
-      const idToken = await user.getIdToken();
-      const workerUrl = process.env.NEXT_PUBLIC_WORKER_URL || "https://freestyle-store-worker.scheglovvrn.workers.dev";
-      const response = await fetch(`${workerUrl}/api/review/create`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${idToken}`,
-        },
-        body: JSON.stringify({
-          orderId: selectedOrderId,
-          text: reviewText,
-          rating: reviewRating,
-        }),
+      const idToken = await getAuthToken(user);
+      await callWorker("/api/review/create", idToken, "POST", {
+        orderId: selectedOrderId,
+        text: reviewText,
+        rating: reviewRating,
       });
-      const result = await response.json().catch(() => ({})) as { error?: string };
-      if (!response.ok) throw new Error(result.error || "Ошибка отправки отзыва");
       toast.success("Отзыв отправлен на модерацию!");
       setIsReviewModalOpen(false);
       setReviewText("");
@@ -338,30 +320,20 @@ export default function AccountPage() {
       return;
     }
     try {
-      const idToken = await user.getIdToken();
-      const workerUrl = process.env.NEXT_PUBLIC_WORKER_URL || "https://freestyle-store-worker.scheglovvrn.workers.dev";
-      const response = await fetch(`${workerUrl}/api/order/update`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${idToken}`,
+      const idToken = await getAuthToken(user);
+      await callWorker("/api/order/update", idToken, "POST", {
+        orderId: editingOrder.id,
+        items: orderDraft.items.map((item) => ({ id: item.productId, quantity: Number(item.quantity || 0) })),
+        customerInfo: {
+          name: orderDraft.name,
+          phone: orderDraft.phone,
+          telegram: orderDraft.telegram,
+          deliveryMethod: orderDraft.deliveryMethod,
+          deliveryService: orderDraft.deliveryMethod === "delivery" ? orderDraft.deliveryService : "",
+          city: orderDraft.deliveryMethod === "delivery" ? orderDraft.city : "",
+          comment: orderDraft.comment,
         },
-        body: JSON.stringify({
-          orderId: editingOrder.id,
-          items: orderDraft.items.map((item) => ({ id: item.productId, quantity: Number(item.quantity || 0) })),
-          customerInfo: {
-            name: orderDraft.name,
-            phone: orderDraft.phone,
-            telegram: orderDraft.telegram,
-            deliveryMethod: orderDraft.deliveryMethod,
-            deliveryService: orderDraft.deliveryMethod === "delivery" ? orderDraft.deliveryService : "",
-            city: orderDraft.deliveryMethod === "delivery" ? orderDraft.city : "",
-            comment: orderDraft.comment,
-          },
-        }),
       });
-      const result = await response.json().catch(() => ({})) as { error?: string };
-      if (!response.ok) throw new Error(result.error || "Ошибка обновления заказа");
       toast.success("Заказ обновлен");
       setOrderEditOpen(false);
     } catch (error) {
@@ -379,18 +351,8 @@ export default function AccountPage() {
     const confirmed = window.confirm("Отменить заказ и удалить его из базы данных?");
     if (!confirmed) return;
     try {
-      const idToken = await user.getIdToken();
-      const workerUrl = process.env.NEXT_PUBLIC_WORKER_URL || "https://freestyle-store-worker.scheglovvrn.workers.dev";
-      const response = await fetch(`${workerUrl}/api/order/cancel`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${idToken}`,
-        },
-        body: JSON.stringify({ orderId: order.id }),
-      });
-      const result = await response.json().catch(() => ({})) as { error?: string };
-      if (!response.ok) throw new Error(result.error || "Ошибка отмены заказа");
+      const idToken = await getAuthToken(user);
+      await callWorker("/api/order/cancel", idToken, "POST", { orderId: order.id });
       toast.success("Заказ отменен");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Ошибка отмены заказа";

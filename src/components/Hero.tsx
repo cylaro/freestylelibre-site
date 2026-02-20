@@ -7,7 +7,8 @@ import { ChevronRight, Zap } from "lucide-react";
 import { db } from "@/lib/firebase";
 import { doc, getDoc } from "firebase/firestore";
 import { normalizeSettings, settingsDefaults } from "@/lib/schemas";
-import Image from "next/image";
+import { ResilientImage } from "@/components/ui/resilient-image";
+import { callWorker } from "@/lib/workerClient";
 
 export function Hero() {
   const { scrollY } = useScroll();
@@ -18,6 +19,18 @@ export function Hero() {
   useEffect(() => {
     let active = true;
     const loadSettings = async () => {
+      try {
+        const response = await callWorker<{ settings?: unknown }>("/api/public/settings", undefined, "GET");
+        if (!active) return;
+        if (response.settings) {
+          const settings = normalizeSettings(response.settings);
+          setHeroImageUrl(settings.media.heroImageUrl || settingsDefaults.media.heroImageUrl);
+          return;
+        }
+      } catch {
+        // fallback to Firestore below
+      }
+
       try {
         const settingsDoc = await getDoc(doc(db, "settings", "config"));
         if (!active) return;
@@ -115,12 +128,14 @@ export function Hero() {
           className="relative group"
         >
           <div className="relative z-10 aspect-[4/5] md:aspect-square rounded-[2.5rem] overflow-hidden shadow-[0_32px_64px_-16px_rgba(0,0,0,0.2)] dark:shadow-[0_32px_64px_-16px_rgba(0,0,0,0.6)] border border-white/20">
-            <Image
+            <ResilientImage
               src={heroImageUrl || settingsDefaults.media.heroImageUrl}
+              fallbackSrc="/images/fallback-hero.svg"
               alt="FreeStyle Libre Monitoring"
               fill
               priority
               sizes="(max-width: 1024px) 100vw, 50vw"
+              timeoutMs={1800}
               className="object-cover transition-transform duration-700 group-hover:scale-105"
             />
             <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />

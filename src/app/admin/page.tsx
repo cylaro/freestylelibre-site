@@ -5,8 +5,9 @@ import { Navbar } from "@/components/Navbar";
 import { useAuth } from "@/contexts/AuthContext";
 import { db } from "@/lib/firebase";
 import { normalizeOrder, normalizeProduct, normalizePurchase, normalizeReview, normalizeSale, normalizeSettings, normalizeUser, settingsDefaults, Order, Product, Purchase, Review, Sale, SettingsConfig, UserProfile } from "@/lib/schemas";
-import { callWorker } from "@/lib/workerClient";
+import { callWorker, getWorkerBaseUrls } from "@/lib/workerClient";
 import { formatTimestamp } from "@/lib/utils";
+import { getAuthToken } from "@/lib/authToken";
 import { 
   collection, 
   query, 
@@ -64,7 +65,7 @@ import {
   Eye
 } from "lucide-react";
 import Link from "next/link";
-import Image from "next/image";
+import { ResilientImage } from "@/components/ui/resilient-image";
 import { 
   Chart as ChartJS, 
   CategoryScale, 
@@ -162,6 +163,9 @@ export default function AdminPage() {
   
   const [searchQuery, setSearchQuery] = useState("");
   const [isSeeding, setIsSeeding] = useState(false);
+  const [isSavingProduct, setIsSavingProduct] = useState(false);
+  const [isSavingPurchase, setIsSavingPurchase] = useState(false);
+  const [isSavingSale, setIsSavingSale] = useState(false);
 
   const [productDialogOpen, setProductDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -244,8 +248,6 @@ export default function AdminPage() {
     transition: reduceMotion ? { duration: 0 } : { duration: 0.25 },
   };
 
-  const workerUrl = process.env.NEXT_PUBLIC_WORKER_URL || "https://freestyle-store-worker.scheglovvrn.workers.dev";
-
   const pushLog = useCallback((level: AdminLogLevel, message: string, details?: string) => {
     const id = typeof crypto !== "undefined" && "randomUUID" in crypto
       ? crypto.randomUUID()
@@ -294,19 +296,21 @@ export default function AdminPage() {
     }));
     try {
       const workerPromise = (async () => {
-        try {
-          const res = await fetch(`${workerUrl}/api/health`);
-          const data = await res.json().catch(() => null) as { status?: string } | null;
-          return res.ok && data?.status === "ok";
-        } catch (error: unknown) {
-          const details = error instanceof Error ? error.message : "Worker недоступен";
-          pushLog("error", "Ошибка проверки Worker", details);
-          return false;
+        for (const baseUrl of getWorkerBaseUrls()) {
+          try {
+            const res = await fetch(`${baseUrl}/api/health`);
+            const data = await res.json().catch(() => null) as { status?: string } | null;
+            if (res.ok && data?.status === "ok") return true;
+          } catch (error: unknown) {
+            const details = error instanceof Error ? error.message : "Worker недоступен";
+            pushLog("error", `Ошибка проверки Worker (${baseUrl})`, details);
+          }
         }
+        return false;
       })();
 
       const statusPromise = (async () => {
-        const token = await user.getIdToken();
+        const token = await getAuthToken(user);
         return callWorkerWithLog<{ worker: { ok: boolean }; firestore: { ok: boolean; error?: string }; telegram: { configured: boolean } }>(
           "/api/admin/status",
           token,
@@ -327,12 +331,18 @@ export default function AdminPage() {
     } catch (error: unknown) {
       const details = error instanceof Error ? error.message : "Неизвестная ошибка";
       pushLog("error", "Ошибка проверки статуса", details);
-      const workerOk = await fetch(`${workerUrl}/api/health`)
-        .then(async (res) => {
-          const data = await res.json().catch(() => null) as { status?: string } | null;
-          return res.ok && data?.status === "ok";
-        })
-        .catch(() => false);
+      const workerOk = await (async () => {
+        for (const baseUrl of getWorkerBaseUrls()) {
+          try {
+            const res = await fetch(`${baseUrl}/api/health`);
+            const data = await res.json().catch(() => null) as { status?: string } | null;
+            if (res.ok && data?.status === "ok") return true;
+          } catch {
+            // continue
+          }
+        }
+        return false;
+      })();
       setStatusSnapshot((prev) => ({
         ...prev,
         workerOk,
@@ -344,12 +354,12 @@ export default function AdminPage() {
     } finally {
       setStatusLoading(false);
     }
-  }, [user, workerUrl, callWorkerWithLog, pushLog]);
+  }, [user, callWorkerWithLog, pushLog]);
 
   const handleTelegramTest = async () => {
     if (!user) return;
     try {
-      const token = await user.getIdToken();
+      const token = await getAuthToken(user);
       await callWorkerWithLog("/api/admin/telegram/test", token, "POST", undefined, "Telegram тест");
       toast.success("Тестовое сообщение отправлено");
     } catch {
@@ -748,7 +758,7 @@ export default function AdminPage() {
     if (targets.length === 0) return;
 
     const syncNames = async () => {
-      const token = await user.getIdToken();
+      const token = await getAuthToken(user);
       for (const review of targets) {
         reviewAutofillRef.current.add(review.id);
         const userProfile = usersMap.get(review.userId);
@@ -814,7 +824,7 @@ export default function AdminPage() {
       const confirmed = window.confirm("Отменить заказ и удалить его из базы данных?");
       if (!confirmed) return;
       try {
-        const token = await user.getIdToken();
+        const token = await getAuthToken(user);
         await callWorkerWithLog(`/api/admin/orders/${orderId}/status`, token, "POST", { status: newStatus }, "Отмена заказа");
         toast.success("Заказ отменен и удален");
       } catch (error) {
@@ -828,7 +838,7 @@ export default function AdminPage() {
       return;
     }
     try {
-      const token = await user.getIdToken();
+      const token = await getAuthToken(user);
       await callWorkerWithLog(`/api/admin/orders/${orderId}/status`, token, "POST", { status: newStatus }, "Статус заказа");
       toast.success(`Статус обновлен: ${getOrderStatusInfo(newStatus).label}`);
     } catch (error) {
@@ -887,7 +897,7 @@ export default function AdminPage() {
       return;
     }
     try {
-      const token = await user.getIdToken();
+      const token = await getAuthToken(user);
       await callWorkerWithLog(
         `/api/admin/orders/${editingOrder.id}/update`,
         token,
@@ -912,7 +922,7 @@ export default function AdminPage() {
   const handleReviewAction = async (reviewId: string, action: "approve" | "reject") => {
     if (!user) return;
     try {
-      const token = await user.getIdToken();
+      const token = await getAuthToken(user);
       await callWorkerWithLog(`/api/admin/reviews/${reviewId}`, token, "POST", {
         status: action === "approve" ? "approved" : "rejected",
       }, "Модерация отзыва");
@@ -930,7 +940,7 @@ export default function AdminPage() {
   const handleSaveReview = async () => {
     if (!user || !reviewDraft) return;
     try {
-      const token = await user.getIdToken();
+      const token = await getAuthToken(user);
       await callWorkerWithLog(`/api/admin/reviews/${reviewDraft.id}`, token, "POST", {
         text: reviewDraft.text,
         rating: Math.min(5, Math.max(1, Number(reviewDraft.rating || 5))),
@@ -968,7 +978,7 @@ export default function AdminPage() {
   const handleSaveUser = async () => {
     if (!user || !userDraft) return;
     try {
-      const token = await user.getIdToken();
+      const token = await getAuthToken(user);
       await callWorkerWithLog(`/api/admin/users/${userDraft.uid}`, token, "POST", {
         isBanned: Boolean(userDraft.isBanned),
         banReason: userDraft.banReason || "",
@@ -986,7 +996,7 @@ export default function AdminPage() {
     if (!user) return;
     setIsSeeding(true);
     try {
-      const token = await user.getIdToken();
+      const token = await getAuthToken(user);
       await callWorkerWithLog("/api/admin/seed", token, "POST", undefined, "Seed БД");
       toast.success("Данные успешно инициализированы!");
     } catch {
@@ -1028,9 +1038,10 @@ export default function AdminPage() {
   };
 
   const handleSaveProduct = async () => {
-    if (!user) return;
+    if (!user || isSavingProduct) return;
+    setIsSavingProduct(true);
     try {
-      const token = await user.getIdToken();
+      const token = await getAuthToken(user);
       const payload = {
         name: productDraft.name,
         description: productDraft.description,
@@ -1052,15 +1063,18 @@ export default function AdminPage() {
       }
       toast.success("Товар сохранен");
       setProductDialogOpen(false);
-    } catch {
-      toast.error("Ошибка сохранения товара");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Ошибка сохранения товара";
+      toast.error(message);
+    } finally {
+      setIsSavingProduct(false);
     }
   };
 
   const handleDeleteProduct = async (productId: string) => {
     if (!user) return;
     try {
-      const token = await user.getIdToken();
+      const token = await getAuthToken(user);
       await callWorkerWithLog(`/api/admin/products/${productId}`, token, "DELETE", undefined, "Удаление товара");
       toast.success("Товар удален");
     } catch {
@@ -1117,9 +1131,10 @@ export default function AdminPage() {
   };
 
   const handleSavePurchase = async () => {
-    if (!user) return;
+    if (!user || isSavingPurchase) return;
+    setIsSavingPurchase(true);
     try {
-      const token = await user.getIdToken();
+      const token = await getAuthToken(user);
       const payload = {
         productId: purchaseDraft.productId,
         qty: Number(purchaseDraft.qty || 0),
@@ -1134,15 +1149,19 @@ export default function AdminPage() {
       }
       toast.success("Закупка сохранена");
       setPurchaseDialogOpen(false);
-    } catch {
-      toast.error("Ошибка сохранения закупки");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Ошибка сохранения закупки";
+      toast.error(message);
+    } finally {
+      setIsSavingPurchase(false);
     }
   };
 
   const handleSaveSale = async () => {
-    if (!user) return;
+    if (!user || isSavingSale) return;
+    setIsSavingSale(true);
     try {
-      const token = await user.getIdToken();
+      const token = await getAuthToken(user);
       const payload = {
         productId: saleDraft.productId,
         qty: Number(saleDraft.qty || 0),
@@ -1157,15 +1176,18 @@ export default function AdminPage() {
       }
       toast.success("Продажа сохранена");
       setSaleDialogOpen(false);
-    } catch {
-      toast.error("Ошибка сохранения продажи");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Ошибка сохранения продажи";
+      toast.error(message);
+    } finally {
+      setIsSavingSale(false);
     }
   };
 
   const handleDeletePurchase = async (purchaseId: string) => {
     if (!user) return;
     try {
-      const token = await user.getIdToken();
+      const token = await getAuthToken(user);
       await callWorkerWithLog(`/api/admin/purchases/${purchaseId}`, token, "DELETE", undefined, "Удаление закупки");
       toast.success("Закупка удалена");
     } catch {
@@ -1176,7 +1198,7 @@ export default function AdminPage() {
   const handleDeleteSale = async (saleId: string) => {
     if (!user) return;
     try {
-      const token = await user.getIdToken();
+      const token = await getAuthToken(user);
       await callWorkerWithLog(`/api/admin/sales/${saleId}`, token, "DELETE", undefined, "Удаление продажи");
       toast.success("Продажа удалена");
     } catch {
@@ -1187,7 +1209,7 @@ export default function AdminPage() {
   const handleSaveSettings = async () => {
     if (!user) return;
     try {
-      const token = await user.getIdToken();
+      const token = await getAuthToken(user);
       const seen = new Set<string>();
       const fields = settingsDraft.orderForm.fields
         .map(field => ({
@@ -2024,7 +2046,15 @@ export default function AdminPage() {
                         <div className="flex items-start gap-3">
                           <div className="relative h-14 w-14 rounded-xl border border-white/10 bg-muted/20 overflow-hidden shrink-0 flex items-center justify-center text-[10px] text-muted-foreground">
                             {product.imageUrl ? (
-                              <Image src={product.imageUrl} alt={product.name} fill sizes="56px" className="object-cover" />
+                              <ResilientImage
+                                src={product.imageUrl}
+                                fallbackSrc="/images/fallback-product.svg"
+                                alt={product.name}
+                                fill
+                                sizes="56px"
+                                timeoutMs={1400}
+                                className="object-cover"
+                              />
                             ) : (
                               "Нет фото"
                             )}
@@ -2110,7 +2140,9 @@ export default function AdminPage() {
                 </div>
                 <DialogFooter>
                   <Button variant="outline" onClick={() => setProductDialogOpen(false)}>Отмена</Button>
-                  <Button onClick={handleSaveProduct}>Сохранить</Button>
+                  <Button onClick={handleSaveProduct} disabled={isSavingProduct}>
+                    {isSavingProduct ? "Сохраняем..." : "Сохранить"}
+                  </Button>
                 </DialogFooter>
               </DialogContent>
             </Dialog>
@@ -2422,7 +2454,9 @@ export default function AdminPage() {
                 </div>
                 <DialogFooter>
                   <Button variant="outline" onClick={() => setPurchaseDialogOpen(false)}>Отмена</Button>
-                  <Button onClick={handleSavePurchase} disabled={!canSavePurchase}>Сохранить</Button>
+                  <Button onClick={handleSavePurchase} disabled={!canSavePurchase || isSavingPurchase}>
+                    {isSavingPurchase ? "Сохраняем..." : "Сохранить"}
+                  </Button>
                 </DialogFooter>
               </DialogContent>
             </Dialog>
@@ -2477,7 +2511,9 @@ export default function AdminPage() {
                 </div>
                 <DialogFooter>
                   <Button variant="outline" onClick={() => setSaleDialogOpen(false)}>Отмена</Button>
-                  <Button onClick={handleSaveSale} disabled={!canSaveSale}>Сохранить</Button>
+                  <Button onClick={handleSaveSale} disabled={!canSaveSale || isSavingSale}>
+                    {isSavingSale ? "Сохраняем..." : "Сохранить"}
+                  </Button>
                 </DialogFooter>
               </DialogContent>
             </Dialog>

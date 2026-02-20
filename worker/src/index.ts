@@ -181,6 +181,12 @@ const userAdminSchema = z.object({
   loyaltyDiscount: z.coerce.number().min(0).max(100).optional(),
 });
 
+const userProfileUpdateSchema = z.object({
+  name: z.string().optional(),
+  phone: z.string().optional(),
+  telegram: z.string().optional(),
+});
+
 const defaultVipRules = {
   vip1: { orders: 3, spent: 0, discount: 5, label: "Постоянный клиент" },
   vip2: { orders: 10, spent: 150000, discount: 7, label: "VIP партнер" },
@@ -198,10 +204,27 @@ const defaultSettings = {
     fields: [{ id: "comment", label: "Комментарий", type: "text", required: false, placeholder: "Особые пожелания" }],
   },
   media: {
-    heroImageUrl: "https://images.unsplash.com/photo-1631549916768-4119b295f78b?auto=format&fit=crop&q=80&w=1200",
-    guideImageUrl: "https://images.unsplash.com/photo-1584017911766-d451b3d0e843?auto=format&fit=crop&q=80&w=1200",
+    heroImageUrl: "/images/fallback-hero.svg",
+    guideImageUrl: "/images/fallback-product.svg",
   },
 };
+
+const BLOCKED_IMAGE_HOSTS = new Set(["images.unsplash.com"]);
+const DEFAULT_PRODUCT_IMAGE = "/images/fallback-product.svg";
+const DEFAULT_HERO_IMAGE = "/images/fallback-hero.svg";
+
+function sanitizeImageUrl(value: string | undefined, fallback: string) {
+  const trimmed = (value || "").trim();
+  if (!trimmed) return fallback;
+  if (trimmed.startsWith("/")) return trimmed;
+  try {
+    const host = new URL(trimmed).hostname.toLowerCase();
+    if (BLOCKED_IMAGE_HOSTS.has(host)) return fallback;
+    return trimmed;
+  } catch {
+    return fallback;
+  }
+}
 
 let cachedAccessToken: { token: string; exp: number } | null = null;
 const verifiedTokenCache = new Map<string, { uid: string; email: string; exp: number; cachedAt: number }>();
@@ -1105,6 +1128,49 @@ async function sendTelegramNotification(env: Bindings, message: string) {
 
 app.get("/api/health", (c) => c.json({ status: "ok" }));
 
+app.get("/api/public/settings", async (c) => {
+  try {
+    const settings = (await firestoreGet(c.env, "settings/config")) || defaultSettings;
+    const media = settings?.media || {};
+    const response = {
+      ...defaultSettings,
+      ...settings,
+      media: {
+        heroImageUrl: sanitizeImageUrl(media.heroImageUrl, DEFAULT_HERO_IMAGE),
+        guideImageUrl: sanitizeImageUrl(media.guideImageUrl, DEFAULT_PRODUCT_IMAGE),
+      },
+    };
+    c.header("Cache-Control", "public, max-age=60");
+    return c.json({ ok: true, settings: response });
+  } catch (error: any) {
+    return handleError(c, error, "Ошибка загрузки настроек");
+  }
+});
+
+app.get("/api/public/products", async (c) => {
+  try {
+    const products = await firestoreRunQuery(c.env, {
+      from: [{ collectionId: "products" }],
+      where: {
+        fieldFilter: {
+          field: { fieldPath: "active" },
+          op: "EQUAL",
+          value: { booleanValue: true },
+        },
+      },
+      orderBy: [{ field: { fieldPath: "sortOrder" }, direction: "ASCENDING" }],
+    });
+    const response = products.map((product) => ({
+      ...product,
+      imageUrl: sanitizeImageUrl(product.imageUrl, DEFAULT_PRODUCT_IMAGE),
+    }));
+    c.header("Cache-Control", "public, max-age=30");
+    return c.json({ ok: true, products: response });
+  } catch (error: any) {
+    return handleError(c, error, "Ошибка загрузки товаров");
+  }
+});
+
 app.get("/api/admin/status", async (c) => {
   try {
     await requireAdmin(c);
@@ -1558,6 +1624,37 @@ app.post("/api/order/claim", async (c) => {
   }
 });
 
+app.get("/api/user/profile", async (c) => {
+  try {
+    const user = await requireAuth(c);
+    const profile = await ensureUserProfile(c.env, user.uid, user.email || "");
+    return c.json({ ok: true, profile });
+  } catch (error: any) {
+    return handleError(c, error, "Ошибка загрузки профиля");
+  }
+});
+
+app.post("/api/user/profile/update", async (c) => {
+  try {
+    const user = await requireAuth(c);
+    const payload = await parseJsonBody(c, userProfileUpdateSchema);
+    const now = new Date();
+    const updates: Record<string, any> = { updatedAt: now };
+    if (payload.name !== undefined) updates.name = payload.name;
+    if (payload.phone !== undefined) {
+      updates.phone = payload.phone;
+      updates.phoneE164 = payload.phone ? normalizePhone(payload.phone) : "";
+    }
+    if (payload.telegram !== undefined) {
+      updates.telegram = normalizeTelegramUsername(payload.telegram);
+    }
+    await firestorePatch(c.env, `users/${user.uid}`, updates);
+    return c.json({ ok: true });
+  } catch (error: any) {
+    return handleError(c, error, "Ошибка обновления профиля");
+  }
+});
+
 app.post("/api/review/create", async (c) => {
   try {
     const user = await requireAuth(c);
@@ -1622,7 +1719,7 @@ app.post("/api/admin/seed", async (c) => {
         name: "FreeStyle Libre 2 (RU)",
         description: "Официальная российская версия. 14 дней работы, сигналы тревоги.",
         price: 4990,
-        imageUrl: "https://images.unsplash.com/photo-1584017911766-d451b3d0e843?auto=format&fit=crop&q=80&w=800",
+        imageUrl: "/images/fallback-product.svg",
         inStock: true,
         discountPercent: 0,
         features: ["14 дней", "RU версия", "Сигналы тревоги"],
@@ -1634,7 +1731,7 @@ app.post("/api/admin/seed", async (c) => {
         name: "FreeStyle Libre 2 (EU)",
         description: "Европейская версия. Требует настройки (xDrip+ / патч).",
         price: 4490,
-        imageUrl: "https://images.unsplash.com/photo-1584017911766-d451b3d0e843?auto=format&fit=crop&q=80&w=800",
+        imageUrl: "/images/fallback-product.svg",
         inStock: true,
         discountPercent: 5,
         features: ["14 дней", "EU версия", "Выгодная цена"],
@@ -1646,7 +1743,7 @@ app.post("/api/admin/seed", async (c) => {
         name: "FreeStyle Libre 3 Plus",
         description: "Новинка. Самый маленький сенсор, 15 дней работы, Bluetooth-трансляция.",
         price: 6490,
-        imageUrl: "https://images.unsplash.com/photo-1584017911766-d451b3d0e843?auto=format&fit=crop&q=80&w=800",
+        imageUrl: "/images/fallback-product.svg",
         inStock: true,
         discountPercent: 0,
         features: ["15 дней", "Bluetooth 24/7", "Ультра-компактный"],
@@ -1744,6 +1841,10 @@ app.post("/api/admin/products", async (c) => {
   try {
     await requireAdmin(c);
     const payload = await parseJsonBody(c, productSchema);
+    const normalizedPayload = {
+      ...payload,
+      imageUrl: sanitizeImageUrl(payload.imageUrl, DEFAULT_PRODUCT_IMAGE),
+    };
     const now = new Date();
     const productId = crypto.randomUUID();
     await firestoreCommit(c.env, [
@@ -1751,7 +1852,7 @@ app.post("/api/admin/products", async (c) => {
         update: {
           name: firestoreResourceName(c.env.FIREBASE_PROJECT_ID, `products/${productId}`),
           fields: toFirestoreFields({
-            ...payload,
+            ...normalizedPayload,
             createdAt: now,
             updatedAt: now,
           }),
@@ -1770,8 +1871,14 @@ app.put("/api/admin/products/:id", async (c) => {
     await requireAdmin(c);
     const productId = c.req.param("id");
     const payload = await parseJsonBody(c, productSchema.partial());
-    await firestorePatch(c.env, `products/${productId}`, {
+    const updates = {
       ...payload,
+      ...(payload.imageUrl !== undefined
+        ? { imageUrl: sanitizeImageUrl(payload.imageUrl, DEFAULT_PRODUCT_IMAGE) }
+        : {}),
+    };
+    await firestorePatch(c.env, `products/${productId}`, {
+      ...updates,
       updatedAt: new Date(),
     });
     return c.json({ ok: true });
@@ -2082,6 +2189,14 @@ app.post("/api/admin/settings", async (c) => {
   try {
     await requireAdmin(c);
     const payload = await parseJsonBody(c, settingsSchema);
+    const normalizedPayload = {
+      ...payload,
+      media: {
+        ...payload.media,
+        heroImageUrl: sanitizeImageUrl(payload.media?.heroImageUrl, DEFAULT_HERO_IMAGE),
+        guideImageUrl: sanitizeImageUrl(payload.media?.guideImageUrl, DEFAULT_PRODUCT_IMAGE),
+      },
+    };
     const now = new Date();
     const existing = await firestoreGet(c.env, "settings/config");
     const createdAt = existing?.createdAt || now;
@@ -2089,7 +2204,7 @@ app.post("/api/admin/settings", async (c) => {
       update: {
         name: firestoreResourceName(c.env.FIREBASE_PROJECT_ID, "settings/config"),
         fields: toFirestoreFields({
-          ...payload,
+          ...normalizedPayload,
           createdAt,
           updatedAt: now,
         }),

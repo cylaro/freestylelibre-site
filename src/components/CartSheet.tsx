@@ -28,7 +28,9 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { motion, AnimatePresence, useAnimation, useReducedMotion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { normalizeSettings, settingsDefaults, OrderFormField } from "@/lib/schemas";
-import Image from "next/image";
+import { ResilientImage } from "@/components/ui/resilient-image";
+import { getAuthToken } from "@/lib/authToken";
+import { callWorker } from "@/lib/workerClient";
 
 type CheckoutFormData = {
   deliveryMethod: "pickup" | "delivery";
@@ -61,31 +63,39 @@ export function CartSheet() {
 
   useEffect(() => {
     const loadSettings = async () => {
+      const reservedIds = new Set(["telegram", "phone", "name", "deliveryMethod", "deliveryService", "city"]);
+      const applySettings = (rawSettings: unknown) => {
+        const settings = normalizeSettings(rawSettings);
+        const fields = (settings.orderForm.fields || []).filter(field => !reservedIds.has(field.id));
+        setFormFields(fields);
+        const services = (settings.deliveryServices || []).filter(service => service.active);
+        setDeliveryServices(services);
+        setFormData(prev => ({
+          ...prev,
+          deliveryService: prev.deliveryService || services[0]?.id || "",
+        }));
+      };
+
+      try {
+        const response = await callWorker<{ settings?: unknown }>("/api/public/settings", undefined, "GET");
+        if (response.settings) {
+          applySettings(response.settings);
+          return;
+        }
+      } catch {
+        // Firestore fallback below.
+      }
+
       try {
         const settingsDoc = await getDoc(doc(db, "settings", "config"));
-        const reservedIds = new Set(["telegram", "phone", "name", "deliveryMethod", "deliveryService", "city"]);
         if (settingsDoc.exists()) {
-          const settings = normalizeSettings(settingsDoc.data());
-          const fields = (settings.orderForm.fields || []).filter(field => !reservedIds.has(field.id));
-          setFormFields(fields);
-          const services = (settings.deliveryServices || []).filter(service => service.active);
-          setDeliveryServices(services);
-          setFormData(prev => ({
-            ...prev,
-            deliveryService: prev.deliveryService || services[0]?.id || "",
-          }));
+          applySettings(settingsDoc.data());
         } else {
-          const fields = (settingsDefaults.orderForm.fields || []).filter(field => !reservedIds.has(field.id));
-          setFormFields(fields);
-          const services = (settingsDefaults.deliveryServices || []).filter(service => service.active);
-          setDeliveryServices(services);
-          setFormData(prev => ({
-            ...prev,
-            deliveryService: prev.deliveryService || services[0]?.id || "",
-          }));
+          applySettings(settingsDefaults);
         }
-      } catch (e) {
-        console.error("Error loading settings", e);
+      } catch (error) {
+        console.error("Error loading settings", error);
+        applySettings(settingsDefaults);
       }
     };
     loadSettings();
@@ -182,8 +192,7 @@ export function CartSheet() {
 
     setLoading(true);
     try {
-      const idToken = user ? await user.getIdToken() : null;
-      const workerUrl = process.env.NEXT_PUBLIC_WORKER_URL || "https://freestyle-store-worker.scheglovvrn.workers.dev";
+      const idToken = user ? await getAuthToken(user) : null;
       const customFields: Record<string, string> = {};
       for (const field of formFields) {
         customFields[field.id] = formData[field.id] || "";
@@ -192,35 +201,25 @@ export function CartSheet() {
       const nonce = typeof crypto !== "undefined" && "randomUUID" in crypto
         ? crypto.randomUUID()
         : Date.now().toString();
-      const response = await fetch(`${workerUrl}/api/order/create`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(idToken ? { "Authorization": `Bearer ${idToken}` } : {})
+      const requestBody = {
+        items: items.map(item => ({
+          id: item.id,
+          name: item.name,
+          quantity: item.quantity
+        })),
+        customerInfo: {
+          name: formData.name || "",
+          phone,
+          telegram: formData.telegram || "",
+          deliveryMethod: formData.deliveryMethod || "pickup",
+          deliveryService: formData.deliveryService || "",
+          city: formData.city || "",
+          customFields
         },
-        body: JSON.stringify({
-          items: items.map(item => ({
-            id: item.id,
-            name: item.name,
-            quantity: item.quantity
-          })),
-          customerInfo: {
-            name: formData.name || "",
-            phone,
-            telegram: formData.telegram || "",
-            deliveryMethod: formData.deliveryMethod || "pickup",
-            deliveryService: formData.deliveryService || "",
-            city: formData.city || "",
-            customFields
-          },
-          nonce
-        })
-      });
+        nonce
+      };
 
-      const result = await response.json().catch(() => ({})) as { error?: string; orderId?: string };
-      if (!response.ok) {
-        throw new Error(result.error || "Ошибка оформления заказа");
-      }
+      const result = await callWorker<{ orderId?: string }>("/api/order/create", idToken, "POST", requestBody);
 
       toast.success("Заказ успешно оформлен! Мы свяжемся с вами в ближайшее время.");
       if (!user) {
@@ -343,11 +342,13 @@ export function CartSheet() {
                               className="flex gap-5 p-4 rounded-[1.5rem] bg-muted/30 border border-white/5 group relative overflow-hidden"
                             >
                               <div className="h-24 w-24 rounded-2xl overflow-hidden border bg-background shrink-0 shadow-sm">
-                                <Image
+                                <ResilientImage
                                   src={item.imageUrl}
+                                  fallbackSrc="/images/fallback-product.svg"
                                   alt={item.name}
                                   width={96}
                                   height={96}
+                                  timeoutMs={1400}
                                   className="h-full w-full object-cover group-hover:scale-110 transition-transform duration-500"
                                 />
                               </div>

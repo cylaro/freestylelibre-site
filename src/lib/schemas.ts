@@ -290,8 +290,8 @@ const defaultSettings: SettingsConfig = {
     ],
   },
   media: {
-    heroImageUrl: "https://images.unsplash.com/photo-1631549916768-4119b295f78b?auto=format&fit=crop&q=80&w=1200",
-    guideImageUrl: "https://images.unsplash.com/photo-1584017911766-d451b3d0e843?auto=format&fit=crop&q=80&w=1200",
+    heroImageUrl: "/images/fallback-hero.svg",
+    guideImageUrl: "/images/fallback-product.svg",
   },
 };
 
@@ -311,10 +311,37 @@ const settingsSchema = z.object({
   }).default(defaultSettings.media),
 }).strip();
 
+const BLOCKED_MEDIA_HOSTS = new Set([
+  "images.unsplash.com",
+]);
+
+const DEFAULT_PRODUCT_IMAGE = "/images/fallback-product.svg";
+
+function sanitizeMediaUrl(value: string, fallback: string) {
+  const trimmed = (value || "").trim();
+  if (!trimmed) return fallback;
+  if (trimmed.startsWith("/")) return trimmed;
+  try {
+    const host = new URL(trimmed).hostname.toLowerCase();
+    if (BLOCKED_MEDIA_HOSTS.has(host)) return fallback;
+    return trimmed;
+  } catch {
+    return fallback;
+  }
+}
+
+function sanitizeProductImageUrl(value: string) {
+  return sanitizeMediaUrl(value, DEFAULT_PRODUCT_IMAGE);
+}
+
 export function normalizeProduct(id: string, data: unknown): Product {
   const parsed = productSchema.safeParse(data);
   const value = parsed.success ? parsed.data : productSchema.parse({});
-  return { id, ...value };
+  return {
+    id,
+    ...value,
+    imageUrl: sanitizeProductImageUrl(value.imageUrl),
+  };
 }
 
 export function normalizeUser(data: unknown, fallback: Partial<UserProfile> = {}): UserProfile {
@@ -402,6 +429,14 @@ export function normalizeSettings(data: unknown): SettingsConfig {
     media: {
       ...defaultSettings.media,
       ...(value.media || {}),
+      heroImageUrl: sanitizeMediaUrl(
+        value.media?.heroImageUrl || defaultSettings.media.heroImageUrl,
+        defaultSettings.media.heroImageUrl
+      ),
+      guideImageUrl: sanitizeMediaUrl(
+        value.media?.guideImageUrl || defaultSettings.media.guideImageUrl,
+        defaultSettings.media.guideImageUrl
+      ),
     },
   };
 }

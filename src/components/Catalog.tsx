@@ -4,13 +4,14 @@ import React, { useEffect, useRef, useState } from "react";
 import { collection, onSnapshot, query, where, orderBy } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { normalizeProduct, Product } from "@/lib/schemas";
+import { callWorker } from "@/lib/workerClient";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useCart } from "@/contexts/CartContext";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { Check } from "lucide-react";
-import Image from "next/image";
+import { ResilientImage } from "@/components/ui/resilient-image";
 
 export function Catalog() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -22,11 +23,30 @@ export function Catalog() {
   const reduceMotion = useReducedMotion();
 
   useEffect(() => {
+    let mounted = true;
+    let hasData = false;
+
+    const loadViaWorker = async () => {
+      try {
+        const result = await callWorker<{ products?: unknown[] }>("/api/public/products", undefined, "GET");
+        if (!mounted || !Array.isArray(result.products)) return;
+        setProducts(result.products.map((item, index) => normalizeProduct(String((item as { id?: string })?.id || `p-${index}`), item)));
+        hasData = true;
+        setLoading(false);
+        setError(null);
+      } catch {
+        // Firestore realtime listener below remains fallback source.
+      }
+    };
+
+    loadViaWorker();
+
     const q = query(collection(db, "products"), where("active", "==", true), orderBy("sortOrder", "asc"));
     const unsubscribe = onSnapshot(
       q,
       (snapshot) => {
         const prods = snapshot.docs.map(doc => normalizeProduct(doc.id, doc.data()));
+        hasData = true;
         setProducts(prods);
         setLoading(false);
         setError(null);
@@ -35,12 +55,17 @@ export function Catalog() {
         const message = err?.code === "failed-precondition"
           ? "Для запроса нужен индекс Firestore. Создайте индекс и обновите страницу."
           : "Не удалось загрузить каталог. Проверьте правила Firestore и подключение.";
-        setError(message);
-        setLoading(false);
+        if (!hasData) {
+          setError(message);
+          setLoading(false);
+        }
       }
     );
 
-    return () => unsubscribe();
+    return () => {
+      mounted = false;
+      unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
@@ -100,11 +125,13 @@ export function Catalog() {
                 <Card className="h-full overflow-hidden border border-white/10 shadow-lg bg-background/60 backdrop-blur-xl">
                   <div className="aspect-square relative overflow-hidden group bg-muted/20">
                     {product.imageUrl ? (
-                      <Image
+                      <ResilientImage
                         src={product.imageUrl}
+                        fallbackSrc="/images/fallback-product.svg"
                         alt={product.name}
                         fill
                         sizes="(max-width: 1024px) 100vw, 33vw"
+                        timeoutMs={1600}
                         className="object-cover transition-transform duration-500 group-hover:scale-105"
                       />
                     ) : (
