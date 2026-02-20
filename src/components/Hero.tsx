@@ -4,6 +4,8 @@ import React, { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { motion, useScroll, useTransform } from "framer-motion";
 import { ChevronRight, Zap } from "lucide-react";
+import { db } from "@/lib/firebase";
+import { doc, getDoc } from "firebase/firestore";
 import { normalizeSettings, settingsDefaults } from "@/lib/schemas";
 import { ResilientImage } from "@/components/ui/resilient-image";
 import { callWorker } from "@/lib/workerClient";
@@ -23,12 +25,21 @@ export function Hero() {
         if (response.settings) {
           const settings = normalizeSettings(response.settings);
           setHeroImageUrl(settings.media.heroImageUrl || settingsDefaults.media.heroImageUrl);
+          return;
+        }
+      } catch {
+        // fallback to Firestore below
+      }
+
+      try {
+        const settingsDoc = await getDoc(doc(db, "settings", "config"));
+        if (!active) return;
+        if (settingsDoc.exists()) {
+          const settings = normalizeSettings(settingsDoc.data());
+          setHeroImageUrl(settings.media.heroImageUrl || settingsDefaults.media.heroImageUrl);
         }
       } catch (error) {
-        if (active) {
-          console.error("Failed to load settings", error);
-          setHeroImageUrl(settingsDefaults.media.heroImageUrl);
-        }
+        console.error("Failed to load settings", error);
       }
     };
     loadSettings();

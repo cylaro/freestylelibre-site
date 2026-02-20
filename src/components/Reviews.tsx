@@ -1,30 +1,24 @@
 import React, { useEffect, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
+import { collection, onSnapshot, orderBy, query, where, limit } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 import { normalizeReview, Review } from "@/lib/schemas";
-import { callWorker } from "@/lib/workerClient";
 
 export function Reviews() {
   const [reviews, setReviews] = useState<Review[]>([]);
   const reduceMotion = useReducedMotion();
 
   useEffect(() => {
-    let mounted = true;
-    const load = async () => {
-      try {
-        const response = await callWorker<{ reviews?: unknown[] }>("/api/public/reviews", undefined, "GET");
-        if (!mounted) return;
-        const list = Array.isArray(response.reviews)
-          ? response.reviews.map((item, index) => normalizeReview(String((item as { id?: string })?.id || `r-${index}`), item))
-          : [];
-        setReviews(list);
-      } catch {
-        if (mounted) setReviews([]);
-      }
-    };
-    load();
-    return () => {
-      mounted = false;
-    };
+    const q = query(
+      collection(db, "reviews"),
+      where("status", "==", "approved"),
+      orderBy("createdAt", "desc"),
+      limit(6)
+    );
+    const unsub = onSnapshot(q, (snap) => {
+      setReviews(snap.docs.map(doc => normalizeReview(doc.id, doc.data())));
+    });
+    return () => unsub();
   }, []);
 
   return (

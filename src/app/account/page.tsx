@@ -4,11 +4,20 @@ import React, { useEffect, useState } from "react";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
 import { useAuth } from "@/contexts/AuthContext";
+import { db } from "@/lib/firebase";
 import { normalizeOrder, normalizeProduct, normalizeReview, normalizeSettings, settingsDefaults, Order, Product, Review, SettingsConfig } from "@/lib/schemas";
 import { formatTimestamp } from "@/lib/utils";
 import { callWorker } from "@/lib/workerClient";
 import { getAuthToken } from "@/lib/authToken";
 import Link from "next/link";
+import {
+  collection,
+  query,
+  where,
+  orderBy,
+  doc,
+  onSnapshot
+} from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -86,63 +95,77 @@ export default function AccountPage() {
         transition: { duration: 0.35 },
       };
 
+  const toDate = (value: unknown): Date | null => {
+    if (!value) return null;
+    if (value instanceof Date) return value;
+    if (typeof value === "string" || typeof value === "number") return new Date(value);
+    if (typeof value === "object") {
+      const anyValue = value as { toDate?: () => Date; seconds?: number };
+      if (typeof anyValue.toDate === "function") return anyValue.toDate();
+      if (typeof anyValue.seconds === "number") return new Date(anyValue.seconds * 1000);
+    }
+    return null;
+  };
+
   useEffect(() => {
-    if (!user || !profile) return;
-    let active = true;
-    let firstLoad = true;
+    if (profile) {
+      setEditProfile({
+        name: profile.name || "",
+        phone: profile.phone || "",
+        telegram: profile.telegram || "",
+      });
 
-    const loadAccountData = async () => {
-      try {
-        const token = await getAuthToken(user);
-        const response = await callWorker<{
-          orders?: unknown[];
-          reviews?: unknown[];
-          products?: unknown[];
-          settings?: unknown;
-          profile?: unknown;
-        }>("/api/account/bootstrap", token, "GET");
-        if (!active) return;
+      const unsubOrders = onSnapshot(
+        query(collection(db, "orders"), where("userId", "==", profile.uid)),
+        (snap) => {
+          const list = snap.docs.map(doc => normalizeOrder(doc.id, doc.data()));
+          list.sort((a, b) => (toDate(b.createdAt)?.getTime() || 0) - (toDate(a.createdAt)?.getTime() || 0));
+          setOrders(list);
+        },
+        (error) => {
+          toast.error(error?.message || "Ошибка загрузки заказов");
+        }
+      );
 
-        const ordersList = Array.isArray(response.orders)
-          ? response.orders.map((item, index) => normalizeOrder(String((item as { id?: string })?.id || `o-${index}`), item))
-          : [];
-        const reviewsList = Array.isArray(response.reviews)
-          ? response.reviews.map((item, index) => normalizeReview(String((item as { id?: string })?.id || `r-${index}`), item))
-          : [];
-        const productsList = Array.isArray(response.products)
-          ? response.products.map((item, index) => normalizeProduct(String((item as { id?: string })?.id || `p-${index}`), item))
-          : [];
-        const settingsData = response.settings ? normalizeSettings(response.settings) : settingsDefaults;
+      const unsubReviews = onSnapshot(
+        query(collection(db, "reviews"), where("userId", "==", profile.uid)),
+        (snap) => {
+          setReviews(snap.docs.map(doc => normalizeReview(doc.id, doc.data())));
+        },
+        (error) => {
+          toast.error(error?.message || "Ошибка загрузки отзывов");
+        }
+      );
 
-        setOrders(ordersList);
-        setReviews(reviewsList);
-        setProducts(productsList);
-        setSettings(settingsData);
+      const unsubProducts = onSnapshot(
+        query(collection(db, "products"), where("active", "==", true), orderBy("sortOrder", "asc")),
+        (snap) => {
+          setProducts(snap.docs.map(doc => normalizeProduct(doc.id, doc.data())));
+        },
+        (error) => {
+          toast.error(error?.message || "Ошибка загрузки товаров");
+        }
+      );
 
-        const sourceProfile = response.profile && typeof response.profile === "object"
-          ? (response.profile as { name?: string; phone?: string; telegram?: string })
-          : { name: profile.name, phone: profile.phone, telegram: profile.telegram };
-        setEditProfile({
-          name: sourceProfile.name || "",
-          phone: sourceProfile.phone || "",
-          telegram: sourceProfile.telegram || "",
-        });
-      } catch (error) {
-        if (!active || !firstLoad) return;
-        const message = error instanceof Error ? error.message : "Ошибка загрузки кабинета";
-        toast.error(message);
-      } finally {
-        firstLoad = false;
-      }
-    };
+      const unsubSettings = onSnapshot(
+        doc(db, "settings", "config"),
+        (snap) => {
+          const data = snap.exists() ? normalizeSettings(snap.data()) : settingsDefaults;
+          setSettings(data);
+        },
+        (error) => {
+          toast.error(error?.message || "Ошибка загрузки настроек");
+        }
+      );
 
-    loadAccountData();
-    const timer = window.setInterval(loadAccountData, 20000);
-    return () => {
-      active = false;
-      window.clearInterval(timer);
-    };
-  }, [user, profile]);
+      return () => {
+        unsubOrders();
+        unsubReviews();
+        unsubProducts();
+        unsubSettings();
+      };
+    }
+  }, [profile]);
 
   useEffect(() => {
     if (!user || !profile) return;
