@@ -4,7 +4,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { collection, onSnapshot, query, where, orderBy } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { normalizeProduct, Product } from "@/lib/schemas";
-import { callWorker } from "@/lib/workerClient";
+import { callApi } from "@/lib/apiClient";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -28,7 +28,7 @@ export function Catalog() {
 
     const loadViaWorker = async () => {
       try {
-        const result = await callWorker<{ products?: unknown[] }>("/api/public/products", undefined, "GET");
+        const result = await callApi<{ products?: unknown[] }>("/api/public/products", undefined, "GET");
         if (!mounted || !Array.isArray(result.products)) return;
         setProducts(result.products.map((item, index) => normalizeProduct(String((item as { id?: string })?.id || `p-${index}`), item)));
         hasData = true;

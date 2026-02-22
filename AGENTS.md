@@ -4,7 +4,7 @@
 ## Tech Stack
 - **Frontend**: Next.js 15, TypeScript, Tailwind CSS, Lucide React, Framer Motion, Chart.js.
 - **Backend/DB**: Firebase Auth (авторизация), Firestore (БД), Firebase Storage (изображения).
-- **Serverless**: Cloudflare Worker (обработка заказов, Telegram API).
+- **Serverless**: Netlify Functions (обработка заказов, Telegram API).
 - **Integrations**: Telegram Bot API (уведомления о заказах).
 
 ## Architecture
@@ -12,7 +12,7 @@
 - `src/components`: Модульные UI-компоненты (Hero, Catalog, Navbar, etc.).
 - `src/contexts`: Состояние авторизации и корзины.
 - `src/lib`: Инициализация Firebase и утилиты.
-- `worker`: Исходный код Cloudflare Worker.
+- `netlify/functions`: Исходный код backend API (Netlify Functions).
 - `docs`: Подробная документация по развертыванию.
 
 ## User Preferences

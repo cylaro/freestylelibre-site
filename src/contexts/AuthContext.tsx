@@ -9,7 +9,7 @@ import {
 import { doc, onSnapshot } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 import { normalizeUser, UserProfile } from "@/lib/schemas";
-import { callWorker } from "@/lib/workerClient";
+import { callApi } from "@/lib/apiClient";
 import { getAuthToken } from "@/lib/authToken";
 
 interface AuthContextType {
@@ -64,7 +64,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             (async () => {
               try {
                 const token = await getAuthToken(nextUser);
-                const response = await callWorker<{ profile?: unknown }>("/api/user/profile", token, "GET");
+                const response = await callApi<{ profile?: unknown }>("/api/user/profile", token, "GET");
                 if (response.profile) {
                   setProfile(normalizeUser(response.profile, { uid: nextUser.uid, email: nextUser.email ?? "" }));
                 } else {
