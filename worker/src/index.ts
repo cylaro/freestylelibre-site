@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { z } from "zod";
@@ -11,28 +10,6 @@ type Bindings = {
   TELEGRAM_BOT_TOKEN: string;
   TELEGRAM_CHAT_ID: string;
 };
-
-function readBindings(): Bindings {
-  return {
-    FIREBASE_PROJECT_ID: process.env.FIREBASE_PROJECT_ID || "",
-    FIREBASE_WEB_API_KEY: process.env.FIREBASE_WEB_API_KEY || "",
-    FIREBASE_SERVICE_ACCOUNT: process.env.FIREBASE_SERVICE_ACCOUNT || "",
-    FIREBASE_SERVICE_ACCOUNT_JSON: process.env.FIREBASE_SERVICE_ACCOUNT_JSON || "",
-    TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN || "",
-    TELEGRAM_CHAT_ID: process.env.TELEGRAM_CHAT_ID || "",
-  };
-}
-
-function normalizeApiRequestPath(request: Request) {
-  const url = new URL(request.url);
-  const directPrefix = "/.netlify/functions/api";
-  if (url.pathname === directPrefix || url.pathname.startsWith(`${directPrefix}/`)) {
-    const suffix = url.pathname.slice(directPrefix.length);
-    url.pathname = `/api${suffix || ""}`;
-    return new Request(url.toString(), request);
-  }
-  return request;
-}
 
 const app = new Hono<{ Bindings: Bindings }>();
 app.use(
@@ -286,6 +263,16 @@ function requireEnv(env: Bindings, name: keyof Bindings) {
     throw new MissingEnvError(name);
   }
   return value;
+}
+
+function parseJsonEnv<T>(env: Bindings, name: keyof Bindings): T {
+  const raw = requireEnv(env, name);
+  try {
+    return JSON.parse(raw) as T;
+  } catch (error) {
+    console.error(`Invalid JSON in ${name}`, error);
+    throw new InvalidEnvError(name);
+  }
 }
 
 function parseServiceAccountEnv(env: Bindings) {
@@ -620,6 +607,7 @@ function applyDeliveryServiceLabel(order: any, map: Map<string, string>) {
 }
 
 function buildOrderTelegramMessage(order: any, title: string, vipLine: string) {
+  const deliveryMethod = order.deliveryMethod === "delivery" ? "Доставка" : "Самовывоз";
   const deliveryLines =
     order.deliveryMethod === "delivery"
       ? [
@@ -766,6 +754,10 @@ function firestoreCommitUrl(projectId: string) {
   return `${firestoreApiBase()}/projects/${projectId}/databases/(default)/documents:commit`;
 }
 
+function firestoreBatchGetUrl(projectId: string) {
+  return `${firestoreApiBase()}/projects/${projectId}/databases/(default)/documents:batchGet`;
+}
+
 function firestoreRunQueryUrl(projectId: string) {
   return `${firestoreApiBase()}/projects/${projectId}/databases/(default)/documents:runQuery`;
 }
@@ -855,6 +847,36 @@ async function firestoreCommit(env: Bindings, writes: any[]) {
     throw err;
   }
   return data;
+}
+
+async function firestoreBatchGet(env: Bindings, docPaths: string[]): Promise<FirestoreDoc[]> {
+  if (docPaths.length === 0) return [];
+  const token = await getAccessToken(env);
+  const res = await fetch(firestoreBatchGetUrl(env.FIREBASE_PROJECT_ID), {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      documents: docPaths.map((path) => firestoreResourceName(env.FIREBASE_PROJECT_ID, path)),
+    }),
+  });
+  if (!res.ok) {
+    const errorText = await res.text();
+    console.error("Firestore batchGet error:", errorText);
+    throw new Error(errorText);
+  }
+  const text = await res.text();
+  const docs: any[] = [];
+  for (const line of text.split("\n")) {
+    if (!line.trim()) continue;
+    const parsed = JSON.parse(line);
+    if (parsed.found) {
+      docs.push(fromFirestoreDoc(parsed.found));
+    }
+  }
+  return docs;
 }
 
 async function firestoreRunQuery(env: Bindings, structuredQuery: Record<string, any>): Promise<FirestoreDoc[]> {
@@ -1153,11 +1175,11 @@ app.get("/api/admin/status", async (c) => {
   try {
     await requireAdmin(c);
     const result: {
-      api: { ok: boolean };
+      worker: { ok: boolean };
       firestore: { ok: boolean; error?: string };
       telegram: { configured: boolean };
     } = {
-      api: { ok: true },
+      worker: { ok: true },
       firestore: { ok: true },
       telegram: { configured: Boolean(c.env.TELEGRAM_BOT_TOKEN && c.env.TELEGRAM_CHAT_ID) },
     };
@@ -1739,8 +1761,7 @@ app.post("/api/admin/seed", async (c) => {
     }
 
     const existingSettings = await firestoreGet(c.env, "settings/config");
-    const existingSafe = { ...((existingSettings as any) || {}) };
-    delete (existingSafe as any).googleSheets;
+    const { googleSheets: _ignored, ...existingSafe } = (existingSettings as any) || {};
     const settingsBase = existingSettings
       ? {
           ...defaultSettings,
@@ -2387,9 +2408,4 @@ app.delete("/api/admin/sales/:id", async (c) => {
   }
 });
 
-const handler = async (request: Request) => {
-  const req = normalizeApiRequestPath(request);
-  return app.fetch(req, readBindings());
-};
-
-export default handler;
+export default app;

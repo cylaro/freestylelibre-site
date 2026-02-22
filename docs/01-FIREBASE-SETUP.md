@@ -35,7 +35,7 @@
 2. Нажмите **Инициализировать БД (Seed)**.
 3. В Firestore появятся 3 товара, `settings/config` и 2–3 отзыва со статусом `approved`.
 
-## 8) Service Account для API
+## 8) Service Account для Worker
 1. **Project settings → Service accounts**.
 2. Создайте новый ключ (JSON).
-3. Значения из JSON используются в Netlify Environment Variables (см. `docs/02-NETLIFY-FUNCTIONS.md`).
+3. Значения из JSON используются в `wrangler secret put` (см. `docs/02-CLOUDFLARE-WORKER.md`).

@@ -5,7 +5,7 @@ import { Navbar } from "@/components/Navbar";
 import { useAuth } from "@/contexts/AuthContext";
 import { db } from "@/lib/firebase";
 import { normalizeOrder, normalizeProduct, normalizePurchase, normalizeReview, normalizeSale, normalizeSettings, normalizeUser, settingsDefaults, Order, Product, Purchase, Review, Sale, SettingsConfig, UserProfile } from "@/lib/schemas";
-import { callApi, getApiBaseUrls } from "@/lib/apiClient";
+import { callWorker, getWorkerBaseUrls } from "@/lib/workerClient";
 import { formatTimestamp } from "@/lib/utils";
 import { getAuthToken } from "@/lib/authToken";
 import { 
@@ -220,13 +220,13 @@ export default function AdminPage() {
 
 
   const [statusSnapshot, setStatusSnapshot] = useState<{
-    apiOk: boolean | null;
+    workerOk: boolean | null;
     firestoreOk: boolean | null;
     firestoreError: string;
     telegramConfigured: boolean | null;
     checkedAt: string;
   }>({
-    apiOk: null,
+    workerOk: null,
     firestoreOk: null,
     firestoreError: "",
     telegramConfigured: null,
@@ -264,7 +264,7 @@ export default function AdminPage() {
     ].slice(0, 200));
   }, []);
 
-  const callApiWithLog = useCallback(async <T extends Record<string, unknown> = Record<string, unknown>>(
+  const callWorkerWithLog = useCallback(async <T extends Record<string, unknown> = Record<string, unknown>>(
     path: string,
     token: string,
     method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" = "POST",
@@ -274,7 +274,7 @@ export default function AdminPage() {
     const title = label || `${method} ${path}`;
     pushLog("info", `Запрос: ${title}`);
     try {
-      const res = await callApi<T>(path, token, method, body);
+      const res = await callWorker<T>(path, token, method, body);
       pushLog("success", `Успешно: ${title}`);
       return res;
     } catch (error: unknown) {
@@ -289,21 +289,21 @@ export default function AdminPage() {
     setStatusLoading(true);
     setStatusSnapshot((prev) => ({
       ...prev,
-      apiOk: null,
+      workerOk: null,
       firestoreOk: null,
       firestoreError: "",
       telegramConfigured: null,
     }));
     try {
-      const apiPromise = (async () => {
-        for (const baseUrl of getApiBaseUrls()) {
+      const workerPromise = (async () => {
+        for (const baseUrl of getWorkerBaseUrls()) {
           try {
             const res = await fetch(`${baseUrl}/api/health`);
             const data = await res.json().catch(() => null) as { status?: string } | null;
             if (res.ok && data?.status === "ok") return true;
           } catch (error: unknown) {
-            const details = error instanceof Error ? error.message : "API недоступен";
-            pushLog("error", `Ошибка проверки API (${baseUrl})`, details);
+            const details = error instanceof Error ? error.message : "Worker недоступен";
+            pushLog("error", `Ошибка проверки Worker (${baseUrl})`, details);
           }
         }
         return false;
@@ -311,7 +311,7 @@ export default function AdminPage() {
 
       const statusPromise = (async () => {
         const token = await getAuthToken(user);
-        return callApiWithLog<{ api: { ok: boolean }; firestore: { ok: boolean; error?: string }; telegram: { configured: boolean } }>(
+        return callWorkerWithLog<{ worker: { ok: boolean }; firestore: { ok: boolean; error?: string }; telegram: { configured: boolean } }>(
           "/api/admin/status",
           token,
           "GET",
@@ -320,9 +320,9 @@ export default function AdminPage() {
         );
       })();
 
-      const [apiOk, status] = await Promise.all([apiPromise, statusPromise]);
+      const [workerOk, status] = await Promise.all([workerPromise, statusPromise]);
       setStatusSnapshot({
-        apiOk,
+        workerOk,
         firestoreOk: Boolean(status.firestore?.ok),
         firestoreError: status.firestore?.error || "",
         telegramConfigured: Boolean(status.telegram?.configured),
@@ -331,8 +331,8 @@ export default function AdminPage() {
     } catch (error: unknown) {
       const details = error instanceof Error ? error.message : "Неизвестная ошибка";
       pushLog("error", "Ошибка проверки статуса", details);
-      const apiOk = await (async () => {
-        for (const baseUrl of getApiBaseUrls()) {
+      const workerOk = await (async () => {
+        for (const baseUrl of getWorkerBaseUrls()) {
           try {
             const res = await fetch(`${baseUrl}/api/health`);
             const data = await res.json().catch(() => null) as { status?: string } | null;
@@ -345,7 +345,7 @@ export default function AdminPage() {
       })();
       setStatusSnapshot((prev) => ({
         ...prev,
-        apiOk,
+        workerOk,
         firestoreOk: false,
         firestoreError: details,
         telegramConfigured: prev.telegramConfigured ?? null,
@@ -354,13 +354,13 @@ export default function AdminPage() {
     } finally {
       setStatusLoading(false);
     }
-  }, [user, callApiWithLog, pushLog]);
+  }, [user, callWorkerWithLog, pushLog]);
 
   const handleTelegramTest = async () => {
     if (!user) return;
     try {
       const token = await getAuthToken(user);
-      await callApiWithLog("/api/admin/telegram/test", token, "POST", undefined, "Telegram тест");
+      await callWorkerWithLog("/api/admin/telegram/test", token, "POST", undefined, "Telegram тест");
       toast.success("Тестовое сообщение отправлено");
     } catch {
       toast.error("Ошибка отправки Telegram");
@@ -765,7 +765,7 @@ export default function AdminPage() {
         const name = (userProfile?.name || "").trim();
         if (!name) continue;
         try {
-          await callApiWithLog(
+          await callWorkerWithLog(
             `/api/admin/reviews/${review.id}`,
             token,
             "POST",
@@ -779,7 +779,7 @@ export default function AdminPage() {
     };
 
     syncNames();
-  }, [reviews, users, user, profile, callApiWithLog]);
+  }, [reviews, users, user, profile, callWorkerWithLog]);
 
   useEffect(() => {
     if (activeTab === "status") {
@@ -795,7 +795,7 @@ export default function AdminPage() {
     <Button asChild><Link href="/">На главную</Link></Button>
   </div>;
 
-  const apiBadge = getStatusBadge(statusSnapshot.apiOk, "OK", "Недоступен");
+  const workerBadge = getStatusBadge(statusSnapshot.workerOk, "OK", "Недоступен");
   const firestoreBadge = getStatusBadge(statusSnapshot.firestoreOk, "OK", "Ошибка");
   const telegramBadge = statusSnapshot.telegramConfigured === null
     ? { label: "Проверка...", className: "bg-muted text-muted-foreground border-none" }
@@ -825,7 +825,7 @@ export default function AdminPage() {
       if (!confirmed) return;
       try {
         const token = await getAuthToken(user);
-        await callApiWithLog(`/api/admin/orders/${orderId}/status`, token, "POST", { status: newStatus }, "Отмена заказа");
+        await callWorkerWithLog(`/api/admin/orders/${orderId}/status`, token, "POST", { status: newStatus }, "Отмена заказа");
         toast.success("Заказ отменен и удален");
       } catch (error) {
         const message = error instanceof Error ? error.message : "Ошибка удаления";
@@ -839,7 +839,7 @@ export default function AdminPage() {
     }
     try {
       const token = await getAuthToken(user);
-      await callApiWithLog(`/api/admin/orders/${orderId}/status`, token, "POST", { status: newStatus }, "Статус заказа");
+      await callWorkerWithLog(`/api/admin/orders/${orderId}/status`, token, "POST", { status: newStatus }, "Статус заказа");
       toast.success(`Статус обновлен: ${getOrderStatusInfo(newStatus).label}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Ошибка обновления";
@@ -898,7 +898,7 @@ export default function AdminPage() {
     }
     try {
       const token = await getAuthToken(user);
-      await callApiWithLog(
+      await callWorkerWithLog(
         `/api/admin/orders/${editingOrder.id}/update`,
         token,
         "POST",
@@ -923,7 +923,7 @@ export default function AdminPage() {
     if (!user) return;
     try {
       const token = await getAuthToken(user);
-      await callApiWithLog(`/api/admin/reviews/${reviewId}`, token, "POST", {
+      await callWorkerWithLog(`/api/admin/reviews/${reviewId}`, token, "POST", {
         status: action === "approve" ? "approved" : "rejected",
       }, "Модерация отзыва");
       toast.success(`Отзыв ${action === "approve" ? "одобрен" : "отклонен"}`);
@@ -941,7 +941,7 @@ export default function AdminPage() {
     if (!user || !reviewDraft) return;
     try {
       const token = await getAuthToken(user);
-      await callApiWithLog(`/api/admin/reviews/${reviewDraft.id}`, token, "POST", {
+      await callWorkerWithLog(`/api/admin/reviews/${reviewDraft.id}`, token, "POST", {
         text: reviewDraft.text,
         rating: Math.min(5, Math.max(1, Number(reviewDraft.rating || 5))),
         status: reviewDraft.status,
@@ -979,7 +979,7 @@ export default function AdminPage() {
     if (!user || !userDraft) return;
     try {
       const token = await getAuthToken(user);
-      await callApiWithLog(`/api/admin/users/${userDraft.uid}`, token, "POST", {
+      await callWorkerWithLog(`/api/admin/users/${userDraft.uid}`, token, "POST", {
         isBanned: Boolean(userDraft.isBanned),
         banReason: userDraft.banReason || "",
         loyaltyLevel: Number(userDraft.loyaltyLevel || 0),
@@ -997,7 +997,7 @@ export default function AdminPage() {
     setIsSeeding(true);
     try {
       const token = await getAuthToken(user);
-      await callApiWithLog("/api/admin/seed", token, "POST", undefined, "Seed БД");
+      await callWorkerWithLog("/api/admin/seed", token, "POST", undefined, "Seed БД");
       toast.success("Данные успешно инициализированы!");
     } catch {
       toast.error("Ошибка сидирования");
@@ -1057,9 +1057,9 @@ export default function AdminPage() {
         costPrice: Number(productDraft.costPrice || 0),
       };
       if (editingProduct) {
-        await callApiWithLog(`/api/admin/products/${editingProduct.id}`, token, "PUT", payload, "Обновление товара");
+        await callWorkerWithLog(`/api/admin/products/${editingProduct.id}`, token, "PUT", payload, "Обновление товара");
       } else {
-        await callApiWithLog("/api/admin/products", token, "POST", payload, "Создание товара");
+        await callWorkerWithLog("/api/admin/products", token, "POST", payload, "Создание товара");
       }
       toast.success("Товар сохранен");
       setProductDialogOpen(false);
@@ -1075,7 +1075,7 @@ export default function AdminPage() {
     if (!user) return;
     try {
       const token = await getAuthToken(user);
-      await callApiWithLog(`/api/admin/products/${productId}`, token, "DELETE", undefined, "Удаление товара");
+      await callWorkerWithLog(`/api/admin/products/${productId}`, token, "DELETE", undefined, "Удаление товара");
       toast.success("Товар удален");
     } catch {
       toast.error("Ошибка удаления товара");
@@ -1143,9 +1143,9 @@ export default function AdminPage() {
         date: purchaseDraft.date,
       };
       if (editingPurchase) {
-        await callApiWithLog(`/api/admin/purchases/${editingPurchase.id}`, token, "PUT", payload, "Обновление закупки");
+        await callWorkerWithLog(`/api/admin/purchases/${editingPurchase.id}`, token, "PUT", payload, "Обновление закупки");
       } else {
-        await callApiWithLog("/api/admin/purchases", token, "POST", payload, "Создание закупки");
+        await callWorkerWithLog("/api/admin/purchases", token, "POST", payload, "Создание закупки");
       }
       toast.success("Закупка сохранена");
       setPurchaseDialogOpen(false);
@@ -1170,9 +1170,9 @@ export default function AdminPage() {
         date: saleDraft.date,
       };
       if (editingSale) {
-        await callApiWithLog(`/api/admin/sales/${editingSale.id}`, token, "PUT", payload, "Обновление продажи");
+        await callWorkerWithLog(`/api/admin/sales/${editingSale.id}`, token, "PUT", payload, "Обновление продажи");
       } else {
-        await callApiWithLog("/api/admin/sales", token, "POST", payload, "Создание продажи");
+        await callWorkerWithLog("/api/admin/sales", token, "POST", payload, "Создание продажи");
       }
       toast.success("Продажа сохранена");
       setSaleDialogOpen(false);
@@ -1188,7 +1188,7 @@ export default function AdminPage() {
     if (!user) return;
     try {
       const token = await getAuthToken(user);
-      await callApiWithLog(`/api/admin/purchases/${purchaseId}`, token, "DELETE", undefined, "Удаление закупки");
+      await callWorkerWithLog(`/api/admin/purchases/${purchaseId}`, token, "DELETE", undefined, "Удаление закупки");
       toast.success("Закупка удалена");
     } catch {
       toast.error("Ошибка удаления закупки");
@@ -1199,7 +1199,7 @@ export default function AdminPage() {
     if (!user) return;
     try {
       const token = await getAuthToken(user);
-      await callApiWithLog(`/api/admin/sales/${saleId}`, token, "DELETE", undefined, "Удаление продажи");
+      await callWorkerWithLog(`/api/admin/sales/${saleId}`, token, "DELETE", undefined, "Удаление продажи");
       toast.success("Продажа удалена");
     } catch {
       toast.error("Ошибка удаления продажи");
@@ -1243,7 +1243,7 @@ export default function AdminPage() {
         heroImageUrl: settingsDraft.media.heroImageUrl.trim(),
         guideImageUrl: settingsDraft.media.guideImageUrl.trim(),
       };
-      await callApiWithLog("/api/admin/settings", token, "POST", {
+      await callWorkerWithLog("/api/admin/settings", token, "POST", {
         ...settingsDraft,
         deliveryServices,
         orderForm: {
@@ -3045,8 +3045,8 @@ export default function AdminPage() {
                   </CardHeader>
                   <CardContent className="space-y-6">
                     <div className="p-4 rounded-2xl bg-background/50 border space-y-2">
-                      <p className="text-xs font-bold">Telegram токен и Chat ID хранятся в секретах Netlify и не сохраняются в Firestore.</p>
-                      <p className="text-xs text-muted-foreground">Проверьте переменные окружения в Netlify Functions.</p>
+                      <p className="text-xs font-bold">Telegram токен и Chat ID хранятся в секретах Worker и не сохраняются в Firestore.</p>
+                      <p className="text-xs text-muted-foreground">Проверьте настройки в Cloudflare Workers.</p>
                     </div>
                     <div className="p-4 rounded-2xl bg-background/50 border space-y-3">
                       <p className="text-xs font-bold leading-relaxed italic">Инициализация базы данных создаст начальный набор товаров и настроек.</p>
@@ -3072,7 +3072,7 @@ export default function AdminPage() {
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
               <div>
                 <h3 className="text-2xl font-black">Статусы системы</h3>
-                <p className="text-sm text-muted-foreground">Проверка API, Firestore и Telegram</p>
+                <p className="text-sm text-muted-foreground">Проверка Worker, Firestore и Telegram</p>
               </div>
               <Button
                 variant="outline"
@@ -3088,11 +3088,11 @@ export default function AdminPage() {
             <div className="grid md:grid-cols-3 gap-6">
               <Card className="rounded-[2rem] border-white/20 shadow-xl bg-background/40 backdrop-blur-xl">
                 <CardHeader>
-                  <CardTitle className="text-lg">API</CardTitle>
+                  <CardTitle className="text-lg">Worker</CardTitle>
                   <CardDescription>Доступность API</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  <Badge className={apiBadge.className}>{apiBadge.label}</Badge>
+                  <Badge className={workerBadge.className}>{workerBadge.label}</Badge>
                   <p className="text-xs text-muted-foreground">Health: `/api/health`</p>
                 </CardContent>
               </Card>
@@ -3146,7 +3146,7 @@ export default function AdminPage() {
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
               <div>
                 <h3 className="text-2xl font-black">Логи</h3>
-                <p className="text-sm text-muted-foreground">Последние действия и ответы API</p>
+                <p className="text-sm text-muted-foreground">Последние действия и ответы воркера</p>
               </div>
               <Button variant="outline" className="h-11 rounded-xl" onClick={() => setLogEntries([])}>
                 Очистить

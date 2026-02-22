@@ -1,0 +1,9 @@
+{
+  "name": "freestyle-store-worker",
+  "main": "src/index.ts",
+  "compatibility_date": "2024-01-01",
+  "vars": {
+    "FIREBASE_PROJECT_ID": "fslibre-834ff",
+    "FIREBASE_WEB_API_KEY": "AIzaSyCMn4ztfHwqHpMiNAXsJb6LkTrEILH0Zn8"
+  }
+}

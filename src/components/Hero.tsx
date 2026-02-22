@@ -8,7 +8,7 @@ import { db } from "@/lib/firebase";
 import { doc, getDoc } from "firebase/firestore";
 import { normalizeSettings, settingsDefaults } from "@/lib/schemas";
 import { ResilientImage } from "@/components/ui/resilient-image";
-import { callApi } from "@/lib/apiClient";
+import { callWorker } from "@/lib/workerClient";
 
 export function Hero() {
   const { scrollY } = useScroll();
@@ -20,7 +20,7 @@ export function Hero() {
     let active = true;
     const loadSettings = async () => {
       try {
-        const response = await callApi<{ settings?: unknown }>("/api/public/settings", undefined, "GET");
+        const response = await callWorker<{ settings?: unknown }>("/api/public/settings", undefined, "GET");
         if (!active) return;
         if (response.settings) {
           const settings = normalizeSettings(response.settings);

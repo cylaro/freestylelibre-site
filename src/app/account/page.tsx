@@ -7,7 +7,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { db } from "@/lib/firebase";
 import { normalizeOrder, normalizeProduct, normalizeReview, normalizeSettings, settingsDefaults, Order, Product, Review, SettingsConfig } from "@/lib/schemas";
 import { formatTimestamp } from "@/lib/utils";
-import { callApi } from "@/lib/apiClient";
+import { callWorker } from "@/lib/workerClient";
 import { getAuthToken } from "@/lib/authToken";
 import Link from "next/link";
 import {
@@ -176,7 +176,7 @@ export default function AccountPage() {
     const claim = async () => {
       try {
         const idToken = await getAuthToken(user);
-        await callApi("/api/order/claim", idToken, "POST", {
+        await callWorker("/api/order/claim", idToken, "POST", {
           orderId: guestOrderId,
         });
         localStorage.removeItem("guestOrderId");
@@ -205,7 +205,7 @@ export default function AccountPage() {
         ? (editProfile.telegram.trim().startsWith("@") ? editProfile.telegram.trim() : `@${editProfile.telegram.trim()}`)
         : "";
       const idToken = await getAuthToken(user);
-      await callApi("/api/user/profile/update", idToken, "POST", {
+      await callWorker("/api/user/profile/update", idToken, "POST", {
         name: editProfile.name || "",
         phone: editProfile.phone || "",
         telegram: normalizedTelegram,
@@ -223,7 +223,7 @@ export default function AccountPage() {
     if (!user || !selectedOrderId) return;
     try {
       const idToken = await getAuthToken(user);
-      await callApi("/api/review/create", idToken, "POST", {
+      await callWorker("/api/review/create", idToken, "POST", {
         orderId: selectedOrderId,
         text: reviewText,
         rating: reviewRating,
@@ -321,7 +321,7 @@ export default function AccountPage() {
     }
     try {
       const idToken = await getAuthToken(user);
-      await callApi("/api/order/update", idToken, "POST", {
+      await callWorker("/api/order/update", idToken, "POST", {
         orderId: editingOrder.id,
         items: orderDraft.items.map((item) => ({ id: item.productId, quantity: Number(item.quantity || 0) })),
         customerInfo: {
@@ -352,7 +352,7 @@ export default function AccountPage() {
     if (!confirmed) return;
     try {
       const idToken = await getAuthToken(user);
-      await callApi("/api/order/cancel", idToken, "POST", { orderId: order.id });
+      await callWorker("/api/order/cancel", idToken, "POST", { orderId: order.id });
       toast.success("Заказ отменен");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Ошибка отмены заказа";
