@@ -30,7 +30,7 @@ import { useRouter } from "next/navigation";
 import { normalizeSettings, settingsDefaults, OrderFormField } from "@/lib/schemas";
 import { ResilientImage } from "@/components/ui/resilient-image";
 import { getAuthToken } from "@/lib/authToken";
-import { callWorker } from "@/lib/workerClient";
+import { callApi } from "@/lib/apiClient";
 
 type CheckoutFormData = {
   deliveryMethod: "pickup" | "delivery";
@@ -77,7 +77,7 @@ export function CartSheet() {
       };
 
       try {
-        const response = await callWorker<{ settings?: unknown }>("/api/public/settings", undefined, "GET");
+        const response = await callApi<{ settings?: unknown }>("/api/public/settings", undefined, "GET");
         if (response.settings) {
           applySettings(response.settings);
           return;
@@ -219,7 +219,7 @@ export function CartSheet() {
         nonce
       };
 
-      const result = await callWorker<{ orderId?: string }>("/api/order/create", idToken, "POST", requestBody);
+      const result = await callApi<{ orderId?: string }>("/api/order/create", idToken, "POST", requestBody);
 
       toast.success("Заказ успешно оформлен! Мы свяжемся с вами в ближайшее время.");
       if (!user) {

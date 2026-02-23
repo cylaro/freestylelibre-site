@@ -23,14 +23,14 @@ NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=ваш_бакет
 NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=ваш_sender_id
 NEXT_PUBLIC_FIREBASE_APP_ID=ваш_app_id
 
-# URL развернутого Cloudflare Worker
-NEXT_PUBLIC_WORKER_URL=https://ваш-воркер.workers.dev
+# URL развернутого API (Netlify Functions)
+NEXT_PUBLIC_API_BASE_URL=https://ваш-api.netlify.app
 
 # Базовый URL сайта (для sitemap/SEO)
 NEXT_PUBLIC_SITE_URL=https://ваш-домен
 ```
 
-Важно: в `.env.local` НЕ размещаются секреты Worker (токен Telegram и service account).
+Важно: в `.env.local` НЕ размещаются серверные секреты (Telegram токен и service account).
 
 ## 4) Запуск в dev
 ```bash
@@ -47,5 +47,5 @@ npm run build
 
 ## 6) Частые проблемы
 - **Пустой каталог / ошибки авторизации**: проверьте `NEXT_PUBLIC_FIREBASE_*`.
-- **Оформление заказа не работает**: проверьте `NEXT_PUBLIC_WORKER_URL` и что Worker развернут.
-- **CORS/Network ошибки**: убедитесь, что Worker отвечает на `/api/health`.
+- **Оформление заказа не работает**: проверьте `NEXT_PUBLIC_API_BASE_URL` и что API развернут.
+- **CORS/Network ошибки**: убедитесь, что API отвечает на `/api/health`.

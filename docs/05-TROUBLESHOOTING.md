@@ -7,12 +7,12 @@
 *   **Решение**: Проверьте, что вы загрузили `firestore.rules` в консоль Firebase. Убедитесь, что ваш пользователь имеет поле `isAdmin: true` для доступа к админке.
 
 ### 2. Заказы не приходят в Telegram
-*   **Причина**: Неверный `TELEGRAM_BOT_TOKEN` или `TELEGRAM_CHAT_ID` в секретах Cloudflare Worker.
-*   **Решение**: Проверьте секреты через `wrangler secret list`. Убедитесь, что вы начали чат с ботом.
+*   **Причина**: Неверный `TELEGRAM_BOT_TOKEN` или `TELEGRAM_CHAT_ID` в переменных Netlify.
+*   **Решение**: Проверьте Environment Variables в Netlify. Убедитесь, что вы начали чат с ботом.
 
-### 3. Ошибка "NEXT_PUBLIC_WORKER_URL is not defined"
+### 3. Ошибка "NEXT_PUBLIC_API_BASE_URL is not defined"
 *   **Причина**: Отсутствует переменная в `.env.local` или в настройках GitHub Actions.
-*   **Решение**: Добавьте URL вашего воркера в переменные окружения.
+*   **Решение**: Добавьте URL вашего API в переменные окружения.
 
 ### 4. Ошибки сборки (Lint/Type errors)
 *   **Причина**: Строгие настройки качества кода.

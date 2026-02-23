@@ -1,14 +1,14 @@
 # Деплой на GitHub Pages (Frontend)
 
 Этот документ описывает публикацию **фронтенда** (Next.js static export).  
-Worker и Firebase настраиваются отдельно.
+API и Firebase настраиваются отдельно.
 
 ## 0) Что куда деплоится
 - Frontend (Next.js static export) → GitHub Pages.
-- API (Cloudflare Worker) → Cloudflare Workers (см. `docs/02-CLOUDFLARE-WORKER.md`).
+- API (Netlify Functions) → Netlify (см. `docs/02-NETLIFY-API.md`).
 - Firebase → остается в Firebase (см. `docs/01-FIREBASE-SETUP.md`).
 
-Перед деплоем фронтенда нужен URL воркера, чтобы заполнить `NEXT_PUBLIC_WORKER_URL`.
+Перед деплоем фронтенда нужен URL API, чтобы заполнить `NEXT_PUBLIC_API_BASE_URL`.
 
 ## 1) Создать репозиторий и запушить код
 ```bash
@@ -77,11 +77,11 @@ jobs:
 - `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET`
 - `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID`
 - `NEXT_PUBLIC_FIREBASE_APP_ID`
-- `NEXT_PUBLIC_WORKER_URL`
+- `NEXT_PUBLIC_API_BASE_URL`
 - `NEXT_PUBLIC_SITE_URL`
 
 Пример:
-- `NEXT_PUBLIC_WORKER_URL=https://freestyle-store-worker.<your>.workers.dev`
+- `NEXT_PUBLIC_API_BASE_URL=https://freestylelibre-api.netlify.app`
 - `NEXT_PUBLIC_SITE_URL=https://<user>.github.io/<repo>/`
 
 ## 5) Base path (если репозиторий НЕ user.github.io)
@@ -112,15 +112,13 @@ npm run build
 ## 8) Секреты и файлы, которые нельзя коммитить
 В проекте есть файлы, которые **нельзя** класть в публичный репозиторий:
 - `.env.local` (локальные переменные)
-- `worker/serviceAccount.json` (ключ сервисного аккаунта)
 - любые файлы с приватными ключами или токенами
 
 Рекомендации:
 - Добавьте в `.gitignore` (если еще нет):
   - `.env.local`
   - `.env.*`
-  - `worker/serviceAccount.json`
-- Секреты для Worker задавайте через `wrangler secret put ...`
+- Секреты для API задавайте в Netlify Environment Variables.
 - Публичные ключи Firebase (`NEXT_PUBLIC_*`) храните в GitHub Secrets.
 
 ## 8) Кастомный домен (опционально)
@@ -137,5 +135,5 @@ example.com
 
 ## 9) Типичные ошибки
 - **Битые пути к статике** → не настроен `basePath/assetPrefix`.
-- **Не грузятся данные** → неверный `NEXT_PUBLIC_WORKER_URL` или не задеплоен worker.
+- **Не грузятся данные** → неверный `NEXT_PUBLIC_API_BASE_URL` или не задеплоен API.
 - **Белый экран** → смотри консоль и логи GitHub Actions.

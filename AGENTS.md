@@ -4,7 +4,7 @@
 ## Tech Stack
 - **Frontend**: Next.js 15, TypeScript, Tailwind CSS, Lucide React, Framer Motion, Chart.js.
 - **Backend/DB**: Firebase Auth (авторизация), Firestore (БД), Firebase Storage (изображения).
-- **Serverless**: Cloudflare Worker (обработка заказов, Telegram API).
+- **Serverless**: Netlify Functions (обработка заказов, Telegram API).
 - **Integrations**: Telegram Bot API (уведомления о заказах).
 
 ## Architecture
@@ -12,7 +12,7 @@
 - `src/components`: Модульные UI-компоненты (Hero, Catalog, Navbar, etc.).
 - `src/contexts`: Состояние авторизации и корзины.
 - `src/lib`: Инициализация Firebase и утилиты.
-- `worker`: Исходный код Cloudflare Worker.
+- `freestylelibre-api`: Исходный код backend API на Netlify Functions.
 - `docs`: Подробная документация по развертыванию.
 
 ## User Preferences
@@ -23,12 +23,12 @@
 
 ## Project Guidelines
 - Использовать функциональные компоненты React и хуки.
-- Безопасность: прямая запись в заказы запрещена (через Worker), строгие правила Firestore.
+- Безопасность: прямая запись в заказы запрещена (через API), строгие правила Firestore.
 - Анимации только через Framer Motion.
 - Статический экспорт (`output: export`).
 
 ## Common Patterns
 - Использование Context API для глобального состояния.
 - Реактивное обновление данных через onSnapshot (Firestore).
-- Валидация форм через react-hook-form + zod (на фронте) и в Worker.
+- Валидация форм через react-hook-form + zod (на фронте) и в API.
 - Нормализация данных (телефоны, цены) перед сохранением.

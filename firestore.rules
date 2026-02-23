@@ -49,7 +49,7 @@ service cloud.firestore {
     // Orders collection
     match /orders/{orderId} {
       allow read: if isOwner(resource.data.userId) || isAdmin();
-      allow create: if false; // Only Worker (Service Account) can create orders
+      allow create: if false; // Only server API (Service Account) can create orders
       allow update: if false;
     }
 
