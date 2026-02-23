@@ -5,7 +5,7 @@ import { Navbar } from "@/components/Navbar";
 import { useAuth } from "@/contexts/AuthContext";
 import { db } from "@/lib/firebase";
 import { normalizeOrder, normalizeProduct, normalizePurchase, normalizeReview, normalizeSale, normalizeSettings, normalizeUser, settingsDefaults, Order, Product, Purchase, Review, Sale, SettingsConfig, UserProfile } from "@/lib/schemas";
-import { callApi, getApiBaseUrl } from "@/lib/apiClient";
+import { callApi, getApiBaseUrl, type ApiCallOptions } from "@/lib/apiClient";
 import { formatTimestamp } from "@/lib/utils";
 import { getAuthToken } from "@/lib/authToken";
 import { 
@@ -269,12 +269,13 @@ export default function AdminPage() {
     token: string,
     method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" = "POST",
     body?: Record<string, unknown>,
-    label?: string
+    label?: string,
+    options?: ApiCallOptions
   ) => {
     const title = label || `${method} ${path}`;
     pushLog("info", `Запрос: ${title}`);
     try {
-      const res = await callApi<T>(path, token, method, body);
+      const res = await callApi<T>(path, token, method, body, options);
       pushLog("success", `Успешно: ${title}`);
       return res;
     } catch (error: unknown) {
@@ -315,7 +316,8 @@ export default function AdminPage() {
           token,
           "GET",
           undefined,
-          "Статус системы"
+          "Статус системы",
+          { timeoutMs: 12000, retries: 1 }
         );
       })();
 
@@ -822,7 +824,14 @@ export default function AdminPage() {
       if (!confirmed) return;
       try {
         const token = await getAuthToken(user);
-        await callApiWithLog(`/api/admin/orders/${orderId}/status`, token, "POST", { status: newStatus }, "Отмена заказа");
+        await callApiWithLog(
+          `/api/admin/orders/${orderId}/status`,
+          token,
+          "POST",
+          { status: newStatus },
+          "Отмена заказа",
+          { timeoutMs: 20000 }
+        );
         toast.success("Заказ отменен и удален");
       } catch (error) {
         const message = error instanceof Error ? error.message : "Ошибка удаления";
@@ -836,7 +845,14 @@ export default function AdminPage() {
     }
     try {
       const token = await getAuthToken(user);
-      await callApiWithLog(`/api/admin/orders/${orderId}/status`, token, "POST", { status: newStatus }, "Статус заказа");
+      await callApiWithLog(
+        `/api/admin/orders/${orderId}/status`,
+        token,
+        "POST",
+        { status: newStatus },
+        "Статус заказа",
+        { timeoutMs: 20000 }
+      );
       toast.success(`Статус обновлен: ${getOrderStatusInfo(newStatus).label}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Ошибка обновления";
