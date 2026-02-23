@@ -275,7 +275,11 @@ export default function AdminPage() {
     const title = label || `${method} ${path}`;
     pushLog("info", `Запрос: ${title}`);
     try {
-      const res = await callApi<T>(path, token, method, body, options);
+      const res = await callApi<T & { soft?: boolean; warning?: string; upstreamError?: string }>(path, token, method, body, options);
+      if (res.soft) {
+        const details = [res.warning, res.upstreamError].filter(Boolean).join(" | ");
+        pushLog("error", `Soft ACK: ${title}`, details || "Операция подтверждена оптимистично, проверьте серверные логи.");
+      }
       pushLog("success", `Успешно: ${title}`);
       return res;
     } catch (error: unknown) {
@@ -352,6 +356,54 @@ export default function AdminPage() {
       }));
     } finally {
       setStatusLoading(false);
+    }
+  }, [user, callApiWithLog, pushLog]);
+
+  const loadServerLogs = useCallback(async () => {
+    if (!user) return;
+    try {
+      const token = await getAuthToken(user);
+      const res = await callApiWithLog<{
+        logs?: Array<{
+          id?: string;
+          level?: string;
+          message?: string;
+          requestPath?: string;
+          requestMethod?: string;
+          status?: number;
+          details?: string;
+          createdAt?: string;
+        }>;
+      }>(
+        "/api/admin/system-logs",
+        token,
+        "GET",
+        undefined,
+        "Серверные логи",
+        { timeoutMs: 12000, retries: 1, quickAckOnFailure: false }
+      );
+
+      const incoming: AdminLogEntry[] = (res.logs || []).map((item, index) => ({
+        id: item.id || `server-log-${index}-${item.createdAt || Date.now()}`,
+        level: item.level === "error" ? "error" : item.level === "warn" ? "error" : "info",
+        message: `[server] ${item.message || "Событие API"} (${item.requestMethod || "GET"} ${item.requestPath || "unknown"})`,
+        details: [item.details, typeof item.status === "number" ? `status=${item.status}` : ""].filter(Boolean).join(" | "),
+        time: item.createdAt ? new Date(item.createdAt).toLocaleTimeString("ru-RU") : new Date().toLocaleTimeString("ru-RU"),
+      }));
+
+      if (incoming.length === 0) return;
+      setLogEntries((prev) => {
+        const merged = new Map(prev.map((entry) => [entry.id, entry]));
+        for (const entry of incoming) {
+          if (!merged.has(entry.id)) {
+            merged.set(entry.id, entry);
+          }
+        }
+        return Array.from(merged.values()).slice(0, 400);
+      });
+    } catch (error) {
+      const details = error instanceof Error ? error.message : "Не удалось загрузить серверные логи";
+      pushLog("error", "Ошибка загрузки серверных логов", details);
     }
   }, [user, callApiWithLog, pushLog]);
 
@@ -784,7 +836,10 @@ export default function AdminPage() {
     if (activeTab === "status") {
       refreshStatus();
     }
-  }, [activeTab, user, refreshStatus]);
+    if (activeTab === "logs") {
+      loadServerLogs();
+    }
+  }, [activeTab, user, refreshStatus, loadServerLogs]);
 
   if (authLoading) return <div className="flex items-center justify-center min-h-screen">Подождите...</div>;
   if (!profile?.isAdmin) return <div className="flex flex-col items-center justify-center min-h-screen text-destructive gap-4">
