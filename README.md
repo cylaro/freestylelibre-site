@@ -24,3 +24,6 @@
 
 ### Настройка:
 Подробные инструкции по настройке Firebase, Netlify API и деплою на GitHub Pages находятся в папке `docs/`.
+
+Ключевая переменная для фронтенда:
+- `NEXT_PUBLIC_API_BASE_URL=https://<your-api>.netlify.app`
