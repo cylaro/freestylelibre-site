@@ -47,7 +47,7 @@ export function Navbar() {
   };
 
   return (
-    <nav className="fixed top-0 w-full z-50 pt-2">
+    <nav className="fixed top-0 w-full z-50 pt-2 sm:pt-3">
       <div className="container">
         <div className="glass-panel-strong surface-noise h-16 rounded-2xl px-4 sm:px-5 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-3 min-w-0">
@@ -161,7 +161,7 @@ export function Navbar() {
             className="md:hidden container pt-2"
           >
             <div className="glass-panel rounded-2xl px-4 py-4">
-              <div className="grid grid-cols-2 gap-2 text-sm font-semibold">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm font-semibold">
                 <a href="#catalog" onClick={handleScrollTo("catalog")} className="rounded-xl px-3 py-2 bg-background/40">Каталог</a>
                 <a href="#advantages" onClick={handleScrollTo("advantages")} className="rounded-xl px-3 py-2 bg-background/40">Преимущества</a>
                 <a href="#guide" onClick={handleScrollTo("guide")} className="rounded-xl px-3 py-2 bg-background/40">Как установить</a>

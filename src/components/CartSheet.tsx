@@ -256,16 +256,16 @@ export function CartSheet() {
         animate={{ scale: 1, opacity: 1 }}
         whileHover={reduceMotion ? undefined : { scale: 1.06 }}
         whileTap={reduceMotion ? undefined : { scale: 0.98 }}
-        className="fixed bottom-[calc(env(safe-area-inset-bottom)+1rem)] right-4 sm:right-8 z-40"
+        className="fixed bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] right-3 sm:right-8 z-40"
       >
         <Button 
           size="icon" 
-          className="h-16 w-16 rounded-full shadow-[0_20px_40px_rgba(0,0,0,0.2)] bg-primary hover:bg-primary/90 transition-all"
+          className="h-14 w-14 sm:h-16 sm:w-16 rounded-full shadow-[0_20px_40px_rgba(0,0,0,0.2)] bg-primary hover:bg-primary/90 transition-all"
           onClick={() => setIsOpen(true)}
           aria-label="Открыть корзину"
         >
           <motion.div animate={cartControls}>
-            <ShoppingCart className="h-7 w-7" />
+            <ShoppingCart className="h-6 w-6 sm:h-7 sm:w-7" />
           </motion.div>
           {itemCount > 0 && (
             <motion.span 

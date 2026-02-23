@@ -160,6 +160,7 @@ export default function AdminPage() {
   const [sales, setSales] = useState<Sale[]>([]);
   const [orderListTab, setOrderListTab] = useState<"active" | "archive">("active");
   const reviewAutofillRef = useRef<Set<string>>(new Set());
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
   
   const [searchQuery, setSearchQuery] = useState("");
   const [isSeeding, setIsSeeding] = useState(false);
@@ -642,13 +643,20 @@ export default function AdminPage() {
 
 
   const normalizedQuery = searchQuery.trim().toLowerCase();
+  const searchableTabs = new Set(["orders", "finance", "products", "users", "reviews", "logs"]);
+  const isSearchableTab = searchableTabs.has(activeTab);
 
   const filteredOrders = useMemo(() => {
     const base = normalizedQuery ? orders.filter(order =>
       order.id.toLowerCase().includes(normalizedQuery) ||
       order.name.toLowerCase().includes(normalizedQuery) ||
       (order.userEmail || "").toLowerCase().includes(normalizedQuery) ||
-      (order.phone || "").toLowerCase().includes(normalizedQuery)
+      (order.phone || "").toLowerCase().includes(normalizedQuery) ||
+      (order.phoneE164 || "").toLowerCase().includes(normalizedQuery) ||
+      (order.telegram || "").toLowerCase().includes(normalizedQuery) ||
+      (order.deliveryService || "").toLowerCase().includes(normalizedQuery) ||
+      (order.city || "").toLowerCase().includes(normalizedQuery) ||
+      order.status.toLowerCase().includes(normalizedQuery)
     ) : orders;
     return orderListTab === "archive"
       ? base.filter(order => isArchivedStatus(order.status))
@@ -669,25 +677,33 @@ export default function AdminPage() {
     if (!normalizedQuery) return products;
     return products.filter(product =>
       product.name.toLowerCase().includes(normalizedQuery) ||
-      product.description.toLowerCase().includes(normalizedQuery)
+      product.description.toLowerCase().includes(normalizedQuery) ||
+      product.features.join(" ").toLowerCase().includes(normalizedQuery) ||
+      String(product.price).includes(normalizedQuery)
     );
   }, [products, normalizedQuery]);
 
   const filteredUsers = useMemo(() => {
     if (!normalizedQuery) return users;
     return users.filter(userItem =>
+      userItem.uid.toLowerCase().includes(normalizedQuery) ||
       (userItem.email || "").toLowerCase().includes(normalizedQuery) ||
       (userItem.name || "").toLowerCase().includes(normalizedQuery) ||
-      (userItem.phone || "").toLowerCase().includes(normalizedQuery)
+      (userItem.phone || "").toLowerCase().includes(normalizedQuery) ||
+      (userItem.telegram || "").toLowerCase().includes(normalizedQuery) ||
+      String(userItem.loyaltyLevel || 0).includes(normalizedQuery)
     );
   }, [users, normalizedQuery]);
 
   const filteredReviews = useMemo(() => {
     if (!normalizedQuery) return reviews;
     return reviews.filter(review =>
+      review.id.toLowerCase().includes(normalizedQuery) ||
+      (review.orderId || "").toLowerCase().includes(normalizedQuery) ||
       review.text.toLowerCase().includes(normalizedQuery) ||
       (review.userEmail || "").toLowerCase().includes(normalizedQuery) ||
-      (review.userName || "").toLowerCase().includes(normalizedQuery)
+      (review.userName || "").toLowerCase().includes(normalizedQuery) ||
+      review.status.toLowerCase().includes(normalizedQuery)
     );
   }, [reviews, normalizedQuery]);
 
@@ -705,9 +721,42 @@ export default function AdminPage() {
     return sales.filter((sale) =>
       sale.productName.toLowerCase().includes(normalizedQuery) ||
       (sale.comment || "").toLowerCase().includes(normalizedQuery) ||
-      sale.id.toLowerCase().includes(normalizedQuery)
+      sale.id.toLowerCase().includes(normalizedQuery) ||
+      (sale.sourceType || "").toLowerCase().includes(normalizedQuery)
     );
   }, [sales, normalizedQuery]);
+
+  const filteredLogEntries = useMemo(() => {
+    if (!normalizedQuery) return logEntries;
+    return logEntries.filter((entry) =>
+      entry.message.toLowerCase().includes(normalizedQuery) ||
+      (entry.details || "").toLowerCase().includes(normalizedQuery) ||
+      entry.level.toLowerCase().includes(normalizedQuery)
+    );
+  }, [logEntries, normalizedQuery]);
+
+  useEffect(() => {
+    if (!isSearchableTab && searchQuery) {
+      setSearchQuery("");
+    }
+  }, [isSearchableTab, searchQuery]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!isSearchableTab) return;
+      const isMetaK = (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k";
+      if (isMetaK) {
+        event.preventDefault();
+        searchInputRef.current?.focus();
+      }
+      if (event.key === "Escape" && document.activeElement === searchInputRef.current) {
+        setSearchQuery("");
+        searchInputRef.current?.blur();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [isSearchableTab]);
 
   useEffect(() => {
     if (!profile?.isAdmin) return;
@@ -895,6 +944,32 @@ export default function AdminPage() {
     logs: { title: "Логи", description: "История действий администратора и ответов API." },
   };
   const activeTabMeta = tabMeta[activeTab] || tabMeta.dashboard;
+  const searchPlaceholderByTab: Record<string, string> = {
+    orders: "ID, имя, телефон, email, статус, город",
+    finance: "Товар, комментарий, ID операции",
+    products: "Название, описание, характеристика, цена",
+    users: "Email, имя, телефон, Telegram, VIP",
+    reviews: "Текст, имя, email, статус, ID заказа",
+    logs: "Сообщение, детали, уровень",
+  };
+  const searchResultsCount = (() => {
+    switch (activeTab) {
+      case "orders":
+        return filteredOrders.length;
+      case "finance":
+        return financeTab === "purchases" ? filteredPurchases.length : filteredSales.length;
+      case "products":
+        return filteredProducts.length;
+      case "users":
+        return filteredUsers.length;
+      case "reviews":
+        return filteredReviews.length;
+      case "logs":
+        return filteredLogEntries.length;
+      default:
+        return 0;
+    }
+  })();
 
   const handleUpdateOrderStatus = async (orderId: string, newStatus: string, stockIssue?: string) => {
     if (!user) return;
@@ -1571,26 +1646,37 @@ export default function AdminPage() {
               <TabsTrigger value="logs" className="rounded-xl px-5 py-2.5 gap-2 data-[state=active]:bg-primary data-[state=active]:text-white transition-all whitespace-nowrap"><ClipboardList className="w-4 h-4" /> Логи</TabsTrigger>
             </TabsList>
 
-            <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input 
-                  placeholder={`Поиск в разделе: ${activeTabMeta.title.toLowerCase()}`} 
-                  className="pl-9 h-11 bg-background/60 border-white/20 rounded-xl"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                />
+            {isSearchableTab ? (
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input 
+                    ref={searchInputRef}
+                    placeholder={`Поиск: ${searchPlaceholderByTab[activeTab] || activeTabMeta.title.toLowerCase()}`} 
+                    className="pl-9 h-11 bg-background/60 border-white/20 rounded-xl"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <Badge className="h-11 rounded-xl px-3 bg-background/60 text-foreground border border-white/20">
+                    Найдено: {searchResultsCount}
+                  </Badge>
+                  <Badge className="h-11 rounded-xl px-3 bg-background/60 text-muted-foreground border border-white/20 hidden lg:inline-flex">
+                    Ctrl/Cmd + K
+                  </Badge>
+                  <Button
+                    variant="outline"
+                    className="h-11 rounded-xl bg-background/60 border-white/20 px-4"
+                    onClick={() => setSearchQuery("")}
+                    disabled={!searchQuery}
+                  >
+                    <Filter className="w-4 h-4 mr-1" />
+                    Очистить
+                  </Button>
+                </div>
               </div>
-              <Button
-                variant="outline"
-                className="h-11 rounded-xl bg-background/60 border-white/20 px-4"
-                onClick={() => setSearchQuery("")}
-                disabled={!searchQuery}
-              >
-                <Filter className="w-4 h-4 mr-1" />
-                Очистить
-              </Button>
-            </div>
+            ) : null}
           </div>
 
           <TabsContent value="dashboard">
@@ -3313,10 +3399,12 @@ export default function AdminPage() {
             <Card className="rounded-[2rem] border-white/20 shadow-xl bg-background/40 backdrop-blur-xl">
               <CardContent className="p-0">
                 <div className="max-h-[420px] overflow-y-auto">
-                  {logEntries.length === 0 ? (
-                    <div className="p-6 text-sm text-muted-foreground">Логов пока нет.</div>
+                  {filteredLogEntries.length === 0 ? (
+                    <div className="p-6 text-sm text-muted-foreground">
+                      {searchQuery ? "По вашему запросу ничего не найдено." : "Логов пока нет."}
+                    </div>
                   ) : (
-                    logEntries.map((entry) => (
+                    filteredLogEntries.map((entry) => (
                       <div key={entry.id} className="px-6 py-4 border-b border-white/10">
                         <div className="flex items-center justify-between gap-3">
                           <div className="flex items-center gap-3">

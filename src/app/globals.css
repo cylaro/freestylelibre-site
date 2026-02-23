@@ -161,7 +161,7 @@
     }
   }
   section[id] {
-    scroll-margin-top: 96px;
+    scroll-margin-top: 120px;
   }
   img,
   picture,
@@ -242,6 +242,20 @@
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
+  }
+
+  @media (max-width: 360px) {
+    .section-shell {
+      @apply py-16;
+    }
+
+    .section-head {
+      @apply mb-10;
+    }
+
+    .section-title {
+      @apply text-[1.75rem];
+    }
   }
 }
 

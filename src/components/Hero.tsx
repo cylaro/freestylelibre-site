@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { motion, useReducedMotion, useScroll, useTransform } from "framer-motion";
-import { ChevronRight, ShieldCheck, Truck, Smartphone, Zap } from "lucide-react";
+import { ChevronRight, Zap } from "lucide-react";
 import { db } from "@/lib/firebase";
 import { doc, getDoc } from "firebase/firestore";
 import { normalizeSettings, settingsDefaults } from "@/lib/schemas";
@@ -50,7 +50,7 @@ export function Hero() {
   }, []);
 
   return (
-    <section className="relative min-h-[95vh] flex items-center pt-28 pb-14 overflow-hidden">
+    <section className="relative min-h-[92vh] flex items-center pt-24 sm:pt-28 pb-12 overflow-hidden">
       <motion.div 
         style={reduceMotion ? undefined : { y: y1, opacity }}
         className="absolute top-[-12%] right-[-8%] -z-10 w-[70%] h-[70%] rounded-full bg-gradient-to-l from-blue-500/25 via-cyan-400/10 to-transparent blur-3xl" 
@@ -90,12 +90,6 @@ export function Hero() {
             Здесь продаются оригинальные сенсоры FreeStyle Libre для ежедневного контроля глюкозы. 
             Вы получаете понятный выбор моделей, быструю доставку и поддержку после покупки.
           </p>
-
-          <div className="flex flex-wrap gap-3 mb-8">
-            <span className="glass-chip text-foreground/85"><ShieldCheck className="h-3.5 w-3.5" /> Оригинальные датчики</span>
-            <span className="glass-chip text-foreground/85"><Truck className="h-3.5 w-3.5" /> Доставка по РФ</span>
-            <span className="glass-chip text-foreground/85"><Smartphone className="h-3.5 w-3.5" /> Настройка в смартфоне</span>
-          </div>
 
           <div className="flex flex-wrap gap-4 sm:gap-5">
             <Button size="lg" className="h-12 sm:h-14 w-full sm:w-auto px-8 sm:px-10 text-base sm:text-lg rounded-2xl shadow-lg shadow-primary/25 hover:shadow-primary/40 transition-all duration-300 group" asChild>
@@ -144,21 +138,8 @@ export function Hero() {
               timeoutMs={1800}
               className="object-cover transition-transform duration-700 group-hover:scale-105"
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-            <div className="absolute left-4 top-4 rounded-xl bg-black/45 backdrop-blur-md px-3 py-2 text-[11px] font-bold uppercase tracking-[0.14em] text-white">
-              Libre 3 Plus
-            </div>
+            <div className="absolute inset-0 bg-gradient-to-t from-black/35 via-transparent to-transparent" />
           </div>
-
-          <motion.div
-            initial={reduceMotion ? false : { opacity: 0, y: 12 }}
-            animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
-            className="glass-panel absolute -left-4 -bottom-5 sm:-left-8 sm:-bottom-8 rounded-2xl p-4 max-w-[220px]"
-          >
-            <p className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground font-bold">Что внутри</p>
-            <p className="mt-1 text-sm font-semibold">1 сенсор + понятная инструкция по запуску.</p>
-          </motion.div>
         </motion.div>
       </div>
     </section>
