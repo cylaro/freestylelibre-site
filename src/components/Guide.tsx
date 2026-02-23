@@ -31,15 +31,20 @@ export function Guide() {
   return (
     <motion.section
       id="guide"
-      className="py-24"
+      className="section-shell"
       initial={reduceMotion ? false : { opacity: 0, y: 24 }}
       whileInView={reduceMotion ? undefined : { opacity: 1, y: 0 }}
       viewport={{ once: true, margin: "-80px" }}
       transition={{ duration: 0.6, ease: "easeOut" }}
     >
       <div className="container">
-        <h2 className="text-3xl font-bold text-center mb-16">Как установить сенсор?</h2>
-        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
+        <div className="section-head">
+          <span className="section-kicker">Пошагово</span>
+          <h2 className="section-title">Установка за 4 простых шага</h2>
+          <p className="section-lead">Без сложных действий. Сделайте один раз и дальше пользуйтесь спокойно.</p>
+        </div>
+        <div className="relative grid md:grid-cols-2 lg:grid-cols-4 gap-6 lg:gap-8">
+          <div className="hidden lg:block absolute left-[12%] right-[12%] top-16 h-px bg-gradient-to-r from-transparent via-border to-transparent" />
           {steps.map((step, i) => (
             <motion.div
               key={i}
@@ -47,12 +52,12 @@ export function Guide() {
               whileInView={reduceMotion ? undefined : { opacity: 1, scale: 1 }}
               viewport={{ once: true }}
               transition={{ delay: i * 0.08, duration: 0.5 }}
-              className="relative p-8 rounded-2xl bg-primary/5 border border-white/10 group"
+              className="glass-panel relative p-6 sm:p-7 rounded-3xl group"
             >
-              <span className="text-5xl font-black text-primary/10 absolute top-4 right-4 group-hover:text-primary/20 transition-colors">
+              <span className="text-5xl font-black text-primary/12 absolute top-4 right-4 group-hover:text-primary/25 transition-colors">
                 {step.number}
               </span>
-              <h3 className="text-xl font-bold mb-4">{step.title}</h3>
+              <h3 className="text-xl font-black mb-3 leading-tight">{step.title}</h3>
               <p className="text-muted-foreground text-sm leading-relaxed">
                 {step.text}
               </p>

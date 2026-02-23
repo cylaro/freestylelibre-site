@@ -256,12 +256,13 @@ export function CartSheet() {
         animate={{ scale: 1, opacity: 1 }}
         whileHover={reduceMotion ? undefined : { scale: 1.06 }}
         whileTap={reduceMotion ? undefined : { scale: 0.98 }}
-        className="fixed bottom-8 right-8 z-40"
+        className="fixed bottom-[calc(env(safe-area-inset-bottom)+1rem)] right-4 sm:right-8 z-40"
       >
         <Button 
           size="icon" 
           className="h-16 w-16 rounded-full shadow-[0_20px_40px_rgba(0,0,0,0.2)] bg-primary hover:bg-primary/90 transition-all"
           onClick={() => setIsOpen(true)}
+          aria-label="Открыть корзину"
         >
           <motion.div animate={cartControls}>
             <ShoppingCart className="h-7 w-7" />
@@ -291,6 +292,7 @@ export function CartSheet() {
               animate={reduceMotion ? undefined : { opacity: 1 }}
               exit={reduceMotion ? undefined : { opacity: 0 }}
               className="absolute inset-0 bg-black/60 backdrop-blur-sm" 
+              aria-hidden="true"
               onClick={handleClose} 
             />
             <motion.div 
@@ -298,12 +300,21 @@ export function CartSheet() {
               animate={reduceMotion ? undefined : { x: 0 }}
               exit={reduceMotion ? undefined : { x: "100%" }}
               transition={{ type: "spring", damping: 26, stiffness: 220 }}
+              role="dialog"
+              aria-modal="true"
+              aria-label={step === 1 ? "Корзина" : "Оформление заказа"}
               className="relative w-full max-w-lg bg-background/90 backdrop-blur-xl h-[100dvh] shadow-2xl flex flex-col border-l border-white/10"
             >
             <div className="p-6 border-b flex items-center justify-between bg-muted/30">
               <div className="flex items-center gap-3">
                 {step === 2 && (
-                  <Button variant="ghost" size="icon" onClick={() => setStep(1)} className="rounded-full">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setStep(1)}
+                    className="rounded-full"
+                    aria-label="Вернуться в корзину"
+                  >
                     <ArrowLeft className="h-5 w-5" />
                   </Button>
                 )}
@@ -311,7 +322,15 @@ export function CartSheet() {
                   {step === 1 ? "Корзина" : "Оформление"}
                 </h2>
               </div>
-              <Button variant="ghost" size="icon" onClick={handleClose} className="rounded-full"><X className="h-5 w-5" /></Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={handleClose}
+                className="rounded-full"
+                aria-label="Закрыть корзину"
+              >
+                <X className="h-5 w-5" />
+              </Button>
             </div>
 
             <ScrollArea className="flex-1 min-h-0">
@@ -556,7 +575,7 @@ export function CartSheet() {
               </div>
             </ScrollArea>
 
-            <div className="p-8 border-t bg-muted/30 backdrop-blur-md rounded-t-[2.5rem] shadow-[0_-20px_40px_rgba(0,0,0,0.05)]">
+            <div className="p-6 sm:p-8 border-t bg-muted/30 backdrop-blur-md rounded-t-[2.5rem] shadow-[0_-20px_40px_rgba(0,0,0,0.05)] pb-[calc(env(safe-area-inset-bottom)+1.5rem)]">
               <div className="space-y-3 mb-8">
                 <div className="flex justify-between text-sm font-medium">
                   <span className="text-muted-foreground">Промежуточный итог</span>

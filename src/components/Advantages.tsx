@@ -42,18 +42,19 @@ export function Advantages() {
   return (
     <motion.section
       id="advantages"
-      className="py-24"
+      className="section-shell"
       initial={reduceMotion ? false : { opacity: 0, y: 24 }}
       whileInView={reduceMotion ? undefined : { opacity: 1, y: 0 }}
       viewport={{ once: true, margin: "-80px" }}
       transition={{ duration: 0.6, ease: "easeOut" }}
     >
       <div className="container">
-        <div className="text-center mb-16">
-          <h2 className="text-3xl md:text-5xl font-bold mb-4">Почему это необходимо?</h2>
-          <p className="text-muted-foreground max-w-2xl mx-auto">
-            Непрерывный мониторинг глюкозы — это не просто удобство, это новый уровень 
-            контроля вашего здоровья и качества жизни.
+        <div className="section-head">
+          <span className="section-kicker">Почему это удобно</span>
+          <h2 className="section-title">Что вы получаете с Libre</h2>
+          <p className="section-lead">
+            Непрерывный мониторинг помогает принимать решения вовремя: 
+            меньше тревоги, больше контроля и спокойнее день.
           </p>
         </div>
 
@@ -65,11 +66,18 @@ export function Advantages() {
               whileInView={reduceMotion ? undefined : { opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ delay: index * 0.08, duration: 0.5 }}
-              className="bg-background/60 backdrop-blur-xl p-8 rounded-2xl shadow-sm border border-white/15 hover:shadow-md"
+              className="glass-panel interactive-lift p-7 rounded-3xl"
             >
-              <div className="mb-4">{adv.icon}</div>
-              <h3 className="text-xl font-bold mb-2">{adv.title}</h3>
-              <p className="text-muted-foreground">{adv.description}</p>
+              <div className="mb-5 flex items-center justify-between">
+                <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-background/65 border border-white/20">
+                  {adv.icon}
+                </span>
+                <span className="text-[10px] font-black uppercase tracking-[0.16em] text-muted-foreground">
+                  {String(index + 1).padStart(2, "0")}
+                </span>
+              </div>
+              <h3 className="text-xl font-black mb-2 leading-tight">{adv.title}</h3>
+              <p className="text-muted-foreground text-sm leading-relaxed">{adv.description}</p>
             </motion.div>
           ))}
         </div>

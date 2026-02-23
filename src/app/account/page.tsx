@@ -463,14 +463,25 @@ export default function AccountPage() {
           {/* Main Area */}
           <div className="lg:col-span-8">
             <Tabs defaultValue="orders" className="space-y-8">
-              <TabsList className="bg-background/60 backdrop-blur-xl border-white/20 p-1.5 h-auto rounded-[2rem] gap-2 w-full grid grid-cols-2 sm:inline-flex sm:w-auto sm:gap-1">
+              <div className="glass-panel rounded-[1.5rem] p-4 sm:p-5 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.16em] text-muted-foreground mb-1">Личный кабинет</p>
+                    <h2 className="text-2xl font-black">Управляйте заказами и профилем</h2>
+                  </div>
+                  <Button asChild variant="outline" className="rounded-xl h-10 px-4 w-full sm:w-auto">
+                    <Link href="/#catalog">Перейти в каталог</Link>
+                  </Button>
+                </div>
+                <TabsList className="bg-background/60 backdrop-blur-xl border-white/20 p-1.5 h-auto rounded-[1.2rem] gap-2 w-full grid grid-cols-2 sm:inline-flex sm:w-auto sm:gap-1">
                 <TabsTrigger value="orders" className="rounded-2xl w-full px-4 py-2.5 text-sm sm:px-8 sm:py-3.5 sm:text-base gap-2 data-[state=active]:bg-primary data-[state=active]:text-white transition-all">
                   <History className="w-5 h-5" /> История заказов
                 </TabsTrigger>
                 <TabsTrigger value="profile" className="rounded-2xl w-full px-4 py-2.5 text-sm sm:px-8 sm:py-3.5 sm:text-base gap-2 data-[state=active]:bg-primary data-[state=active]:text-white transition-all">
                   <Settings className="w-5 h-5" /> Настройки профиля
                 </TabsTrigger>
-              </TabsList>
+                </TabsList>
+              </div>
 
               <TabsContent value="orders">
                 <motion.div {...tabMotion} className="space-y-6">

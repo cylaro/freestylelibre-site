@@ -47,27 +47,34 @@ export function FAQ() {
   return (
     <motion.section
       id="faq"
-      className="py-24"
+      className="section-shell"
       initial={reduceMotion ? false : { opacity: 0, y: 24 }}
       whileInView={reduceMotion ? undefined : { opacity: 1, y: 0 }}
       viewport={{ once: true, margin: "-80px" }}
       transition={{ duration: 0.6, ease: "easeOut" }}
     >
-      <div className="container max-w-3xl">
+      <div className="container max-w-4xl">
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }}
         />
-        <h2 className="text-3xl font-bold text-center mb-12">Часто задаваемые вопросы</h2>
+        <div className="section-head">
+          <span className="section-kicker">FAQ</span>
+          <h2 className="section-title">Ответы на важные вопросы</h2>
+          <p className="section-lead">Собрали все, что обычно спрашивают перед покупкой сенсора.</p>
+        </div>
         <div className="space-y-4">
           {faqs.map((faq, i) => {
             const isOpen = openIndex === i;
             return (
-              <div key={i} className="rounded-2xl border border-white/10 bg-background/60 backdrop-blur-xl overflow-hidden">
+              <div key={i} className="glass-panel rounded-2xl overflow-hidden">
                 <button
                   type="button"
                   onClick={() => setOpenIndex(isOpen ? null : i)}
-                  className="w-full flex items-center justify-between gap-4 px-6 py-5 text-left font-semibold hover:bg-muted/30 transition-colors"
+                  aria-expanded={isOpen}
+                  aria-controls={`faq-panel-${i}`}
+                  id={`faq-trigger-${i}`}
+                  className="w-full flex items-center justify-between gap-4 px-6 py-5 text-left font-bold hover:bg-muted/30 transition-colors"
                 >
                   <span>{faq.question}</span>
                   <motion.span
@@ -85,9 +92,12 @@ export function FAQ() {
                       animate={reduceMotion ? undefined : { height: "auto", opacity: 1 }}
                       exit={reduceMotion ? undefined : { height: 0, opacity: 0 }}
                       transition={{ duration: 0.25 }}
+                      id={`faq-panel-${i}`}
+                      role="region"
+                      aria-labelledby={`faq-trigger-${i}`}
                       className="overflow-hidden"
                     >
-                      <div className="px-6 pb-6 text-sm text-muted-foreground">
+                      <div className="px-6 pb-6 text-sm leading-relaxed text-muted-foreground">
                         {faq.answer}
                       </div>
                     </motion.div>

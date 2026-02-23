@@ -882,6 +882,19 @@ export default function AdminPage() {
       Number(saleDraft.qty || 0) > 0 &&
       Number(saleDraft.totalAmount || 0) > 0
   );
+  const pendingReviewsCount = reviews.filter((r) => r.status === "pending").length;
+  const tabMeta: Record<string, { title: string; description: string }> = {
+    dashboard: { title: "Дашборд", description: "Ключевые показатели продаж, прибыли и клиентов." },
+    orders: { title: "Заказы", description: "Все заказы в работе и в архиве с быстрым управлением статусами." },
+    finance: { title: "Финансы", description: "Закупки, продажи и итоговая прибыль по месяцам." },
+    products: { title: "Товары", description: "Каталог сенсоров, цены, скидки и остатки." },
+    users: { title: "Клиенты", description: "Уровни VIP, блокировки и история покупок." },
+    reviews: { title: "Отзывы", description: "Модерация отзывов и редактирование текста/рейтинга." },
+    settings: { title: "Настройки", description: "Правила VIP, форма заказа, службы доставки и медиа." },
+    status: { title: "Статусы", description: "Проверка API, Firestore и интеграции Telegram." },
+    logs: { title: "Логи", description: "История действий администратора и ответов API." },
+  };
+  const activeTabMeta = tabMeta[activeTab] || tabMeta.dashboard;
 
   const handleUpdateOrderStatus = async (orderId: string, newStatus: string, stockIssue?: string) => {
     if (!user) return;
@@ -1504,7 +1517,41 @@ export default function AdminPage() {
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-8">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+          <div className="glass-panel rounded-[1.5rem] p-4 sm:p-5 space-y-4">
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-muted-foreground mb-1">Админ-панель</p>
+                <h2 className="text-2xl font-black leading-tight">{activeTabMeta.title}</h2>
+                <p className="text-sm text-muted-foreground mt-1">{activeTabMeta.description}</p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {activeTab === "products" && (
+                  <Button className="rounded-xl h-10 px-4" onClick={() => openProductDialog()}>
+                    <Plus className="w-4 h-4 mr-1" />
+                    Новый товар
+                  </Button>
+                )}
+                {activeTab === "finance" && (
+                  <>
+                    <Button className="rounded-xl h-10 px-4" onClick={() => openPurchaseDialog()}>
+                      <Plus className="w-4 h-4 mr-1" />
+                      Закупка
+                    </Button>
+                    <Button variant="outline" className="rounded-xl h-10 px-4" onClick={() => openSaleDialog()}>
+                      <Plus className="w-4 h-4 mr-1" />
+                      Продажа
+                    </Button>
+                  </>
+                )}
+                {activeTab === "status" && (
+                  <Button className="rounded-xl h-10 px-4" onClick={refreshStatus} disabled={statusLoading}>
+                    {statusLoading ? <RefreshCw className="w-4 h-4 mr-1 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-1" />}
+                    Обновить статус
+                  </Button>
+                )}
+              </div>
+            </div>
+
             <TabsList className="bg-background/60 backdrop-blur-xl border-white/20 p-1.5 h-auto rounded-2xl gap-2 flex w-full flex-nowrap overflow-x-auto md:flex-wrap md:overflow-x-visible">
               <TabsTrigger value="dashboard" className="rounded-xl px-5 py-2.5 gap-2 data-[state=active]:bg-primary data-[state=active]:text-white transition-all whitespace-nowrap"><BarChart3 className="w-4 h-4" /> Дашборд</TabsTrigger>
               <TabsTrigger value="orders" className="rounded-xl px-5 py-2.5 gap-2 data-[state=active]:bg-primary data-[state=active]:text-white transition-all whitespace-nowrap"><ShoppingCart className="w-4 h-4" /> Заказы</TabsTrigger>
@@ -1513,9 +1560,9 @@ export default function AdminPage() {
               <TabsTrigger value="users" className="rounded-xl px-5 py-2.5 gap-2 data-[state=active]:bg-primary data-[state=active]:text-white transition-all whitespace-nowrap"><Users className="w-4 h-4" /> Клиенты</TabsTrigger>
               <TabsTrigger value="reviews" className="rounded-xl px-5 py-2.5 gap-2 data-[state=active]:bg-primary data-[state=active]:text-white transition-all relative whitespace-nowrap">
                 <MessageSquare className="w-4 h-4" /> Отзывы
-                {reviews.filter(r => r.status === 'pending').length > 0 && (
+                {pendingReviewsCount > 0 && (
                   <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center border-2 border-background">
-                    {reviews.filter(r => r.status === 'pending').length}
+                    {pendingReviewsCount}
                   </span>
                 )}
               </TabsTrigger>
@@ -1524,17 +1571,25 @@ export default function AdminPage() {
               <TabsTrigger value="logs" className="rounded-xl px-5 py-2.5 gap-2 data-[state=active]:bg-primary data-[state=active]:text-white transition-all whitespace-nowrap"><ClipboardList className="w-4 h-4" /> Логи</TabsTrigger>
             </TabsList>
 
-            <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full md:w-auto">
-              <div className="relative flex-1 md:w-64">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full">
+              <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input 
-                  placeholder="Поиск..." 
+                  placeholder={`Поиск в разделе: ${activeTabMeta.title.toLowerCase()}`} 
                   className="pl-9 h-11 bg-background/60 border-white/20 rounded-xl"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
               </div>
-              <Button variant="outline" size="icon" className="h-11 w-11 rounded-xl bg-background/60 border-white/20"><Filter className="w-4 h-4" /></Button>
+              <Button
+                variant="outline"
+                className="h-11 rounded-xl bg-background/60 border-white/20 px-4"
+                onClick={() => setSearchQuery("")}
+                disabled={!searchQuery}
+              >
+                <Filter className="w-4 h-4 mr-1" />
+                Очистить
+              </Button>
             </div>
           </div>
 

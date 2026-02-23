@@ -5,6 +5,7 @@ import { motion, useReducedMotion } from "framer-motion";
 import { collection, onSnapshot, orderBy, query, where, limit } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { normalizeReview, Review } from "@/lib/schemas";
+import { Star } from "lucide-react";
 
 export function Reviews() {
   const [reviews, setReviews] = useState<Review[]>([]);
@@ -26,15 +27,17 @@ export function Reviews() {
   return (
     <motion.section
       id="reviews"
-      className="py-24"
+      className="section-shell"
       initial={reduceMotion ? false : { opacity: 0, y: 24 }}
       whileInView={reduceMotion ? undefined : { opacity: 1, y: 0 }}
       viewport={{ once: true, margin: "-80px" }}
       transition={{ duration: 0.6, ease: "easeOut" }}
     >
       <div className="container">
-        <div className="text-center mb-12">
-          <h2 className="text-3xl font-bold">Отзывы покупателей</h2>
+        <div className="section-head">
+          <span className="section-kicker">Отзывы</span>
+          <h2 className="section-title">Что говорят клиенты</h2>
+          <p className="section-lead">Коротко и по делу: скорость доставки, качество и удобство использования.</p>
         </div>
         {reviews.length === 0 ? (
           <div className="text-center text-muted-foreground">Отзывов пока нет.</div>
@@ -47,15 +50,22 @@ export function Reviews() {
                 whileInView={reduceMotion ? undefined : { opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ duration: 0.45, delay: index * 0.06 }}
-                className="rounded-2xl border border-white/10 bg-background/60 backdrop-blur-xl p-6 shadow-xl hover:shadow-2xl transition-shadow"
+                className="glass-panel rounded-3xl p-6 interactive-lift"
               >
-                <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span className="font-semibold text-foreground/80">{review.userName || "Покупатель"}</span>
+                <div className="flex items-center justify-between text-xs text-muted-foreground gap-3">
+                  <span className="font-bold text-foreground/85">{review.userName || "Покупатель"}</span>
+                  <span className="inline-flex items-center gap-1 rounded-lg bg-background/65 border border-white/20 px-2 py-1">
+                    <Star className="h-3.5 w-3.5 fill-orange-400 text-orange-400" />
+                    <span className="font-bold text-foreground/80">{review.rating}/5</span>
+                  </span>
                 </div>
-                <p className="mt-4 text-base leading-relaxed text-foreground/80">«{review.text}»</p>
+                <p className="mt-4 text-base leading-relaxed text-foreground/85">«{review.text}»</p>
                 <div className="mt-5 flex text-orange-400 text-sm">
                   {[...Array(5)].map((_, i) => (
-                    <span key={i} className={i < review.rating ? "opacity-100" : "opacity-20"}>★</span>
+                    <Star
+                      key={i}
+                      className={`h-4 w-4 ${i < review.rating ? "fill-orange-400 text-orange-400" : "text-orange-400/25"}`}
+                    />
                   ))}
                 </div>
               </motion.div>

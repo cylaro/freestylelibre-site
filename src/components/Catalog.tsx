@@ -10,7 +10,7 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/componen
 import { Badge } from "@/components/ui/badge";
 import { useCart } from "@/contexts/CartContext";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
-import { Check } from "lucide-react";
+import { Check, PackageCheck } from "lucide-react";
 import { ResilientImage } from "@/components/ui/resilient-image";
 
 export function Catalog() {
@@ -90,22 +90,23 @@ export function Catalog() {
   return (
     <motion.section
       id="catalog"
-      className="py-24"
+      className="section-shell"
       initial={reduceMotion ? false : { opacity: 0, y: 24 }}
       whileInView={reduceMotion ? undefined : { opacity: 1, y: 0 }}
       viewport={{ once: true, margin: "-80px" }}
       transition={{ duration: 0.6, ease: "easeOut" }}
     >
       <div className="container">
-        <div className="text-center mb-16">
-          <h2 className="text-3xl md:text-5xl font-bold mb-4">Наш Каталог</h2>
-          <p className="text-muted-foreground">Выберите подходящую модель для вашего комфорта</p>
+        <div className="section-head">
+          <span className="section-kicker">Каталог</span>
+          <h2 className="section-title">Выберите ваш сенсор</h2>
+          <p className="section-lead">Все модели здесь подходят для контроля глюкозы в течение дня без проколов пальца.</p>
         </div>
 
         {loading ? (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
             {Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="h-[420px] rounded-2xl border border-white/10 bg-background/50 animate-pulse" />
+              <div key={i} className="h-[420px] rounded-3xl glass-panel animate-pulse" />
             ))}
           </div>
         ) : error ? (
@@ -122,7 +123,7 @@ export function Catalog() {
                 whileHover={reduceMotion ? undefined : { y: -8 }}
                 transition={{ duration: 0.3 }}
               >
-                <Card className="h-full overflow-hidden border border-white/10 shadow-lg bg-background/60 backdrop-blur-xl">
+                <Card className="h-full overflow-hidden rounded-3xl glass-panel">
                   <div className="aspect-square relative overflow-hidden group bg-muted/20">
                     {product.imageUrl ? (
                       <ResilientImage
@@ -139,8 +140,14 @@ export function Catalog() {
                         Изображение недоступно
                       </div>
                     )}
+                    {product.inStock && (
+                      <div className="absolute top-4 left-4 rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.12em] inline-flex items-center gap-1.5">
+                        <PackageCheck className="w-3.5 h-3.5" />
+                        В наличии
+                      </div>
+                    )}
                     {product.discountPercent > 0 && (
-                      <Badge className="absolute top-4 right-4 bg-orange-500">
+                      <Badge className="absolute top-4 right-4 bg-orange-500 rounded-xl px-2.5">
                         -{product.discountPercent}%
                       </Badge>
                     )}
@@ -154,18 +161,18 @@ export function Catalog() {
                     {product.features.length > 0 && (
                       <div className="flex flex-wrap gap-2 mb-2">
                         {product.features.map((f, i) => (
-                          <Badge key={i} variant="outline" className="text-[10px]">{f}</Badge>
+                          <Badge key={i} variant="outline" className="text-[10px] rounded-lg">{f}</Badge>
                         ))}
                       </div>
                     )}
-                    <CardTitle className="text-xl">{product.name}</CardTitle>
+                    <CardTitle className="text-xl font-black leading-tight">{product.name}</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <p className="text-sm text-muted-foreground line-clamp-2 mb-4">
+                    <p className="text-sm text-muted-foreground line-clamp-2 mb-4 leading-relaxed">
                       {product.description}
                     </p>
                     <div className="flex items-center gap-3">
-                      <span className="text-2xl font-bold text-primary">
+                      <span className="text-2xl font-black text-primary">
                         {product.discountPercent > 0 
                           ? Math.round(product.price * (1 - product.discountPercent / 100)) 
                           : product.price} ₽

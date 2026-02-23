@@ -33,13 +33,13 @@ export function AuthLayout({ children, title, subtitle }: AuthLayoutProps) {
           Вернуться на главную
         </Link>
 
-        <div className="bg-background/40 backdrop-blur-xl border border-white/10 rounded-3xl p-8 shadow-2xl overflow-hidden relative group">
+        <div className="glass-panel-strong rounded-3xl p-8 overflow-hidden relative group surface-noise">
           <div className="absolute -top-24 -right-24 w-48 h-48 bg-primary/10 rounded-full blur-3xl" />
           <div className="absolute -bottom-24 -left-24 w-48 h-48 bg-primary/5 rounded-full blur-3xl" />
           
           <div className="relative z-10">
             <div className="mb-8">
-              <h1 className="text-3xl font-bold tracking-tight mb-2 bg-gradient-to-br from-foreground to-foreground/70 bg-clip-text text-transparent">
+              <h1 className="text-3xl font-black tracking-tight mb-2 headline-gradient">
                 {title}
               </h1>
               <p className="text-muted-foreground">

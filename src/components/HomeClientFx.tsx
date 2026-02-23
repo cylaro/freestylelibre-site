@@ -25,7 +25,7 @@ export function HomeClientFx() {
   return (
     <motion.div
       aria-hidden="true"
-      className="fixed top-0 left-0 right-0 h-1 bg-primary z-[60] origin-left"
+      className="fixed top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-500 z-[70] origin-left shadow-[0_6px_14px_rgba(37,99,235,0.45)]"
       style={{ scaleX }}
     />
   );
