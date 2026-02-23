@@ -1,50 +1,77 @@
-# Настройка Netlify API
+# Настройка Netlify API (пошагово через интерфейс)
 
-API отвечает за безопасное создание заказов, админ-действия и Telegram.
+Ниже инструкция с реальными названиями пунктов в Netlify UI.
 
-## 1) Подготовка Telegram
-1. Создайте бота у **@BotFather** и получите **Bot API Token**.
-2. Напишите сообщение боту.
-3. Узнайте **Chat ID** через **@userinfobot**.
+## 1) Подключить репозиторий API к Netlify
+1. Откройте `https://app.netlify.com`.
+2. Нажмите `Add new project` -> `Import an existing project`.
+3. В блоке `Deploy with GitHub` нажмите `GitHub` и выберите репозиторий `cylaro/freestylelibre-api`.
+4. На экране `Review configuration for freestylelibre-api` заполните поля так:
 
-## 2) Подготовка backend-репозитория
-1. Используйте проект `freestylelibre-api`.
-2. Установите зависимости:
-   ```bash
-   npm install
-   ```
-3. Убедитесь, что в `netlify.toml` указан только каталог функций:
-   - `[functions].directory = "netlify/functions"`
-   - без `build` и без `publish`.
+| Поле в интерфейсе | Что делать |
+|---|---|
+| `Owner` | Оставить как есть (ваша команда/аккаунт Netlify). |
+| `Branch to deploy` | Заполнить: `main`. |
+| `Base directory` | Оставить пустым. |
+| `Package directory` | Оставить пустым. |
+| `Build command` | Оставить пустым. |
+| `Publish directory` | Оставить пустым. |
+| `Functions directory` (если поле видно) | Заполнить: `netlify/functions`. |
+| `Environment variables` (на этом шаге) | Можно оставить пустым, добавим после первого деплоя. |
 
-## 3) Переменные окружения в Netlify
-Добавьте в Netlify:
-- `FIREBASE_PROJECT_ID`
-- `FIREBASE_SERVICE_ACCOUNT` (JSON сервисного аккаунта одной строкой)
-- `TELEGRAM_BOT_TOKEN`
-- `TELEGRAM_CHAT_ID`
-- `ALLOWED_ORIGINS` (через запятую, например `https://site1.com,https://site2.com`)
+5. Нажмите `Deploy freestylelibre-api`.
 
-## 4) Деплой
-1. Подключите репозиторий `freestylelibre-api` к Netlify.
-2. Включите автодеплой от ветки `main`.
-3. После деплоя получите URL:
-   ```text
-   https://<site>.netlify.app
-   ```
+Важно:
+- Для этого API не нужен `publish directory`.
+- Для этого API не нужен `build command`.
+- Конфигурация берется из `netlify.toml`.
 
-## 5) Интеграция с фронтендом
-В frontend задайте:
-```env
-NEXT_PUBLIC_API_BASE_URL=https://<site>.netlify.app
-```
+## 2) Добавить переменные окружения в Netlify
+1. Откройте сайт `freestylelibre-api` в Netlify.
+2. Перейдите: `Site configuration` -> `Environment variables`.
+3. Нажмите `Add a variable`.
+4. Для каждой переменной заполните:
+   - `Key`: заполнить точным именем из таблицы.
+   - `Value`: заполнить значением.
+   - `Scopes`: оставить `All scopes` (по умолчанию).
+5. Нажмите `Create variable`.
 
-## 6) Healthcheck
-Проверьте:
-```text
-GET /api/health
-```
-Ответ:
+| Key | Value (что вставить) | Оставить/заполнить |
+|---|---|---|
+| `FIREBASE_PROJECT_ID` | ID Firebase проекта (например `fslibre-834ff`). | Заполнить |
+| `FIREBASE_SERVICE_ACCOUNT` | Полный JSON сервисного аккаунта Firebase (целиком). | Заполнить |
+| `TELEGRAM_BOT_TOKEN` | Токен от `@BotFather`. | Заполнить |
+| `TELEGRAM_CHAT_ID` | Chat ID для уведомлений. | Заполнить |
+| `ALLOWED_ORIGINS` | Origins через запятую, пример: `https://cylaro.github.io,https://example.com` | Заполнить |
+
+Правило для `ALLOWED_ORIGINS`:
+- Указывать только origin (схема + домен), без пути.
+- Пример правильно: `https://cylaro.github.io`
+- Пример неправильно: `https://cylaro.github.io/orchids-freestyle-libre-shop/`
+
+## 3) Где взять `FIREBASE_SERVICE_ACCOUNT`
+1. Откройте Firebase Console -> ваш проект.
+2. Нажмите шестеренку `Project settings`.
+3. Вкладка `Service accounts`.
+4. Блок `Firebase Admin SDK`.
+5. Нажмите `Generate new private key` -> `Generate key`.
+6. Скачанный JSON откройте и скопируйте полностью в Netlify переменную `FIREBASE_SERVICE_ACCOUNT`.
+
+## 4) Перезапустить деплой после переменных
+1. Перейдите во вкладку `Deploys`.
+2. Нажмите `Trigger deploy`.
+3. Выберите `Deploy site`.
+
+## 5) Проверка API
+1. Откройте: `https://<ваш-site>.netlify.app/api/health`
+2. Должен вернуться JSON:
 ```json
 { "status": "ok" }
 ```
+
+## 6) Что поставить на фронтенде
+В репозитории `freestylelibre-site` в GitHub Secrets добавьте:
+
+`NEXT_PUBLIC_API_BASE_URL=https://<ваш-site>.netlify.app`
+
+Подробно по GitHub интерфейсу: `docs/04-GITHUB-PAGES-DEPLOY.md`.
