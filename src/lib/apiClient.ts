@@ -34,16 +34,28 @@ export async function callApi<T extends Record<string, unknown> = Record<string,
   timeoutMs = 7000
 ): Promise<ApiResponse<T>> {
   const baseUrl = getApiBaseUrl();
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
+  const headers: Record<string, string> = {};
+  const hasBody = body !== undefined;
+  if (hasBody) {
+    headers["Content-Type"] = "application/json";
+  }
   if (token) headers.Authorization = `Bearer ${token}`;
 
-  const res = await fetchWithTimeout(`${baseUrl}${path}`, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-  }, timeoutMs);
+  let res: Response;
+  try {
+    res = await fetchWithTimeout(
+      `${baseUrl}${path}`,
+      {
+        method,
+        headers,
+        body: hasBody ? JSON.stringify(body) : undefined,
+      },
+      timeoutMs
+    );
+  } catch (error) {
+    const isAbort = (error as Error)?.name === "AbortError";
+    throw new Error(isAbort ? "API request timeout" : "API network error");
+  }
 
   const data = (await res.json().catch(() => ({}))) as ApiResponse<T>;
   if (!res.ok) {

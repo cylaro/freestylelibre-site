@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { motion, useScroll, useTransform } from "framer-motion";
+import { motion, useReducedMotion, useScroll, useTransform } from "framer-motion";
 import { ChevronRight, Zap } from "lucide-react";
 import { db } from "@/lib/firebase";
 import { doc, getDoc } from "firebase/firestore";
@@ -12,6 +12,7 @@ import { callApi } from "@/lib/apiClient";
 
 export function Hero() {
   const { scrollY } = useScroll();
+  const reduceMotion = useReducedMotion();
   const y1 = useTransform(scrollY, [0, 500], [0, 200]);
   const opacity = useTransform(scrollY, [0, 300], [1, 0]);
   const [heroImageUrl, setHeroImageUrl] = useState(settingsDefaults.media.heroImageUrl);
@@ -52,21 +53,21 @@ export function Hero() {
     <section className="relative min-h-[90vh] flex items-center pt-20 overflow-hidden">
       {/* Dynamic Background */}
       <motion.div 
-        style={{ y: y1, opacity }}
+        style={reduceMotion ? undefined : { y: y1, opacity }}
         className="absolute top-0 right-0 -z-10 w-[60%] h-full bg-gradient-to-l from-primary/20 via-blue-500/5 to-transparent blur-3xl" 
       />
       <div className="absolute top-20 left-10 -z-10 w-72 h-72 bg-blue-400/10 rounded-full blur-3xl animate-pulse" />
       
       <div className="container grid lg:grid-cols-2 gap-16 items-center">
         <motion.div
-          initial={{ opacity: 0, x: -30 }}
-          animate={{ opacity: 1, x: 0 }}
+          initial={reduceMotion ? false : { opacity: 0, x: -30 }}
+          animate={reduceMotion ? undefined : { opacity: 1, x: 0 }}
           transition={{ duration: 0.8, ease: "easeOut" }}
           className="relative z-10"
         >
           <motion.div 
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
+            initial={reduceMotion ? false : { opacity: 0, y: 10 }}
+            animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
             className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 text-primary text-sm font-medium mb-6"
           >
@@ -122,8 +123,8 @@ export function Hero() {
         </motion.div>
 
         <motion.div
-          initial={{ opacity: 0, scale: 0.9, rotate: 2 }}
-          animate={{ opacity: 1, scale: 1, rotate: 0 }}
+          initial={reduceMotion ? false : { opacity: 0, scale: 0.9, rotate: 2 }}
+          animate={reduceMotion ? undefined : { opacity: 1, scale: 1, rotate: 0 }}
           transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
           className="relative group"
         >

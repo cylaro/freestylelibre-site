@@ -1,3 +1,5 @@
+"use client";
+
 import React, { useEffect, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { collection, onSnapshot, orderBy, query, where, limit } from "firebase/firestore";

@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://freestyle-libre-shop.github.io";
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://freestylelibre.pro";
 const rawOgImage = process.env.NEXT_PUBLIC_OG_IMAGE || "";
 const ogImage = rawOgImage.includes("images.unsplash.com") || !rawOgImage
   ? "/images/og-default.svg"
@@ -24,6 +24,7 @@ const ogImage = rawOgImage.includes("images.unsplash.com") || !rawOgImage
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
+  applicationName: "FreeStyle Store",
   title: {
     default: "FreeStyle Libre — сенсоры мониторинга глюкозы",
     template: "%s | FreeStyle Store",
@@ -40,6 +41,12 @@ export const metadata: Metadata = {
   ],
   alternates: {
     canonical: "/",
+  },
+  category: "health",
+  icons: {
+    icon: "/favicon.ico",
+    shortcut: "/favicon.ico",
+    apple: "/favicon.ico",
   },
   openGraph: {
     title: "FreeStyle Libre — сенсоры мониторинга глюкозы",
@@ -85,6 +92,12 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:fixed focus:z-[100] focus:left-4 focus:top-4 focus:bg-background focus:text-foreground focus:border focus:border-border focus:rounded-md focus:px-3 focus:py-2"
+        >
+          Перейти к содержимому
+        </a>
         <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
           <AuthProvider>
             <CartProvider>
