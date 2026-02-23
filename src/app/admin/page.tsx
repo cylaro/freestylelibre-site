@@ -61,7 +61,6 @@ import {
   Wallet,
   RefreshCw,
   Search,
-  Filter,
   Eye
 } from "lucide-react";
 import Link from "next/link";
@@ -110,6 +109,138 @@ type AdminLogEntry = {
   time: string;
   details?: string;
 };
+
+type AdminSearchResult = {
+  id: string;
+  title: string;
+  description: string;
+  tab: string;
+  anchorId?: string;
+  score: number;
+};
+
+const SEARCH_SYNONYMS: Record<string, string[]> = {
+  клиенты: ["покупатели", "пользователи", "заказчики", "customer", "customers"],
+  покупатели: ["клиенты", "пользователи", "заказчики"],
+  пользователи: ["клиенты", "покупатели"],
+  заказы: ["заявки", "покупки", "orders", "order"],
+  заявки: ["заказы", "покупки"],
+  финансы: ["деньги", "прибыль", "выручка", "расходы", "бухгалтерия"],
+  закупки: ["приход", "поставки", "поставка"],
+  продажи: ["реализация", "выручка", "sales", "sale"],
+  товары: ["каталог", "сенсоры", "продукты", "products", "product"],
+  отзывы: ["оценки", "комментарии", "reviews", "review"],
+  логи: ["журнал", "logs", "log"],
+  статусы: ["система", "здоровье", "health", "monitoring"],
+  vip: ["лояльность", "скидка", "уровень"],
+};
+
+const SEARCH_ALIAS_MAP = (() => {
+  const map = new Map<string, Set<string>>();
+  const addPair = (a: string, b: string) => {
+    if (!map.has(a)) map.set(a, new Set([a]));
+    if (!map.has(b)) map.set(b, new Set([b]));
+    map.get(a)!.add(b);
+    map.get(b)!.add(a);
+  };
+
+  Object.entries(SEARCH_SYNONYMS).forEach(([root, aliases]) => {
+    addPair(root, root);
+    aliases.forEach((alias) => addPair(root, alias));
+  });
+
+  return map;
+})();
+
+function normalizeSearchText(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/ё/g, "е")
+    .replace(/[^a-zа-я0-9\s-]/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function tokenizeSearch(value: string) {
+  const normalized = normalizeSearchText(value);
+  return normalized ? normalized.split(" ") : [];
+}
+
+function levenshteinDistance(a: string, b: string) {
+  if (a === b) return 0;
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+
+  const matrix = Array.from({ length: a.length + 1 }, () => Array<number>(b.length + 1).fill(0));
+  for (let i = 0; i <= a.length; i += 1) matrix[i][0] = i;
+  for (let j = 0; j <= b.length; j += 1) matrix[0][j] = j;
+
+  for (let i = 1; i <= a.length; i += 1) {
+    for (let j = 1; j <= b.length; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      matrix[i][j] = Math.min(
+        matrix[i - 1][j] + 1,
+        matrix[i][j - 1] + 1,
+        matrix[i - 1][j - 1] + cost
+      );
+    }
+  }
+
+  return matrix[a.length][b.length];
+}
+
+function expandTokenWithSynonyms(token: string) {
+  const aliases = SEARCH_ALIAS_MAP.get(token);
+  if (!aliases) return [token];
+  return Array.from(aliases);
+}
+
+function scoreSearchMatch(queryTokens: string[], values: Array<string | number | null | undefined>) {
+  if (queryTokens.length === 0) return 0;
+
+  const rawText = values
+    .map((value) => (value === null || value === undefined ? "" : String(value)))
+    .join(" ");
+  const candidateTokens = tokenizeSearch(rawText);
+  if (candidateTokens.length === 0) return 0;
+
+  const expandedCandidates = new Set<string>();
+  for (const token of candidateTokens) {
+    expandedCandidates.add(token);
+    expandTokenWithSynonyms(token).forEach((alias) => expandedCandidates.add(alias));
+  }
+
+  let score = 0;
+  for (const queryToken of queryTokens) {
+    const queryVariants = expandTokenWithSynonyms(queryToken);
+    let bestTokenScore = 0;
+
+    for (const queryVariant of queryVariants) {
+      for (const candidateToken of expandedCandidates) {
+        if (queryVariant === candidateToken) {
+          bestTokenScore = Math.max(bestTokenScore, 12);
+          continue;
+        }
+
+        if (candidateToken.includes(queryVariant) || queryVariant.includes(candidateToken)) {
+          bestTokenScore = Math.max(bestTokenScore, 8);
+          continue;
+        }
+
+        const threshold = queryVariant.length <= 4 ? 1 : 2;
+        const distance = levenshteinDistance(queryVariant, candidateToken);
+        if (distance <= threshold) {
+          bestTokenScore = Math.max(bestTokenScore, 6 - distance);
+        }
+      }
+    }
+
+    if (bestTokenScore === 0) return 0;
+    score += bestTokenScore;
+  }
+
+  return score;
+}
 
 function toDateValue(value: unknown): Date | null {
   if (!value) return null;
@@ -160,7 +291,6 @@ export default function AdminPage() {
   const [sales, setSales] = useState<Sale[]>([]);
   const [orderListTab, setOrderListTab] = useState<"active" | "archive">("active");
   const reviewAutofillRef = useRef<Set<string>>(new Set());
-  const searchInputRef = useRef<HTMLInputElement | null>(null);
   
   const [searchQuery, setSearchQuery] = useState("");
   const [isSeeding, setIsSeeding] = useState(false);
@@ -642,26 +772,31 @@ export default function AdminPage() {
   }, [orders, users, sales, monthlyFinance]);
 
 
-  const normalizedQuery = searchQuery.trim().toLowerCase();
-  const searchableTabs = new Set(["orders", "finance", "products", "users", "reviews", "logs"]);
-  const isSearchableTab = searchableTabs.has(activeTab);
+  const searchTokens = useMemo(() => tokenizeSearch(searchQuery), [searchQuery]);
+
+  const matchesSearch = useCallback((values: Array<string | number | null | undefined>) => {
+    if (searchTokens.length === 0) return true;
+    return scoreSearchMatch(searchTokens, values) > 0;
+  }, [searchTokens]);
 
   const filteredOrders = useMemo(() => {
-    const base = normalizedQuery ? orders.filter(order =>
-      order.id.toLowerCase().includes(normalizedQuery) ||
-      order.name.toLowerCase().includes(normalizedQuery) ||
-      (order.userEmail || "").toLowerCase().includes(normalizedQuery) ||
-      (order.phone || "").toLowerCase().includes(normalizedQuery) ||
-      (order.phoneE164 || "").toLowerCase().includes(normalizedQuery) ||
-      (order.telegram || "").toLowerCase().includes(normalizedQuery) ||
-      (order.deliveryService || "").toLowerCase().includes(normalizedQuery) ||
-      (order.city || "").toLowerCase().includes(normalizedQuery) ||
-      order.status.toLowerCase().includes(normalizedQuery)
-    ) : orders;
+    const base = orders.filter((order) => matchesSearch([
+      order.id,
+      order.name,
+      order.userEmail,
+      order.phone,
+      order.phoneE164,
+      order.telegram,
+      order.deliveryService,
+      order.city,
+      order.status,
+      order.items.map((item) => `${item.name} ${item.quantity}`).join(" "),
+      "заказы заявки покупки клиенты покупатели",
+    ]));
     return orderListTab === "archive"
       ? base.filter(order => isArchivedStatus(order.status))
       : base.filter(order => !isArchivedStatus(order.status));
-  }, [orders, normalizedQuery, orderListTab, isArchivedStatus]);
+  }, [orders, matchesSearch, orderListTab, isArchivedStatus]);
 
   const activeOrdersCount = useMemo(
     () => orders.filter(order => !isArchivedStatus(order.status)).length,
@@ -674,89 +809,74 @@ export default function AdminPage() {
   );
 
   const filteredProducts = useMemo(() => {
-    if (!normalizedQuery) return products;
-    return products.filter(product =>
-      product.name.toLowerCase().includes(normalizedQuery) ||
-      product.description.toLowerCase().includes(normalizedQuery) ||
-      product.features.join(" ").toLowerCase().includes(normalizedQuery) ||
-      String(product.price).includes(normalizedQuery)
-    );
-  }, [products, normalizedQuery]);
+    return products.filter((product) => matchesSearch([
+      product.name,
+      product.description,
+      product.features.join(" "),
+      product.price,
+      product.costPrice,
+      "товары каталог сенсоры libre",
+    ]));
+  }, [products, matchesSearch]);
 
   const filteredUsers = useMemo(() => {
-    if (!normalizedQuery) return users;
-    return users.filter(userItem =>
-      userItem.uid.toLowerCase().includes(normalizedQuery) ||
-      (userItem.email || "").toLowerCase().includes(normalizedQuery) ||
-      (userItem.name || "").toLowerCase().includes(normalizedQuery) ||
-      (userItem.phone || "").toLowerCase().includes(normalizedQuery) ||
-      (userItem.telegram || "").toLowerCase().includes(normalizedQuery) ||
-      String(userItem.loyaltyLevel || 0).includes(normalizedQuery)
-    );
-  }, [users, normalizedQuery]);
+    return users.filter((userItem) => matchesSearch([
+      userItem.uid,
+      userItem.email,
+      userItem.name,
+      userItem.phone,
+      userItem.telegram,
+      userItem.loyaltyLevel,
+      userItem.loyaltyDiscount,
+      "клиенты покупатели пользователи vip",
+    ]));
+  }, [users, matchesSearch]);
 
   const filteredReviews = useMemo(() => {
-    if (!normalizedQuery) return reviews;
-    return reviews.filter(review =>
-      review.id.toLowerCase().includes(normalizedQuery) ||
-      (review.orderId || "").toLowerCase().includes(normalizedQuery) ||
-      review.text.toLowerCase().includes(normalizedQuery) ||
-      (review.userEmail || "").toLowerCase().includes(normalizedQuery) ||
-      (review.userName || "").toLowerCase().includes(normalizedQuery) ||
-      review.status.toLowerCase().includes(normalizedQuery)
-    );
-  }, [reviews, normalizedQuery]);
+    return reviews.filter((review) => matchesSearch([
+      review.id,
+      review.orderId,
+      review.text,
+      review.userEmail,
+      review.userName,
+      review.status,
+      review.rating,
+      "отзывы комментарии оценки",
+    ]));
+  }, [reviews, matchesSearch]);
 
   const filteredPurchases = useMemo(() => {
-    if (!normalizedQuery) return purchases;
-    return purchases.filter((purchase) =>
-      purchase.productName.toLowerCase().includes(normalizedQuery) ||
-      (purchase.comment || "").toLowerCase().includes(normalizedQuery) ||
-      purchase.id.toLowerCase().includes(normalizedQuery)
-    );
-  }, [purchases, normalizedQuery]);
+    return purchases.filter((purchase) => matchesSearch([
+      purchase.productName,
+      purchase.comment,
+      purchase.id,
+      purchase.qty,
+      purchase.totalAmount,
+      "закупки поставки приход расходы",
+    ]));
+  }, [purchases, matchesSearch]);
 
   const filteredSales = useMemo(() => {
-    if (!normalizedQuery) return sales;
-    return sales.filter((sale) =>
-      sale.productName.toLowerCase().includes(normalizedQuery) ||
-      (sale.comment || "").toLowerCase().includes(normalizedQuery) ||
-      sale.id.toLowerCase().includes(normalizedQuery) ||
-      (sale.sourceType || "").toLowerCase().includes(normalizedQuery)
-    );
-  }, [sales, normalizedQuery]);
+    return sales.filter((sale) => matchesSearch([
+      sale.productName,
+      sale.comment,
+      sale.id,
+      sale.sourceType,
+      sale.qty,
+      sale.totalAmount,
+      "продажи реализация выручка",
+    ]));
+  }, [sales, matchesSearch]);
 
   const filteredLogEntries = useMemo(() => {
-    if (!normalizedQuery) return logEntries;
-    return logEntries.filter((entry) =>
-      entry.message.toLowerCase().includes(normalizedQuery) ||
-      (entry.details || "").toLowerCase().includes(normalizedQuery) ||
-      entry.level.toLowerCase().includes(normalizedQuery)
-    );
-  }, [logEntries, normalizedQuery]);
-
-  useEffect(() => {
-    if (!isSearchableTab && searchQuery) {
-      setSearchQuery("");
-    }
-  }, [isSearchableTab, searchQuery]);
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (!isSearchableTab) return;
-      const isMetaK = (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k";
-      if (isMetaK) {
-        event.preventDefault();
-        searchInputRef.current?.focus();
-      }
-      if (event.key === "Escape" && document.activeElement === searchInputRef.current) {
-        setSearchQuery("");
-        searchInputRef.current?.blur();
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [isSearchableTab]);
+    return logEntries.filter((entry) => matchesSearch([
+      entry.message,
+      entry.details,
+      entry.level,
+      entry.time,
+      "логи журнал события ошибки",
+    ]));
+  }, [logEntries, matchesSearch]);
 
   useEffect(() => {
     if (!profile?.isAdmin) return;
@@ -901,14 +1021,6 @@ export default function AdminPage() {
     }
   }, [activeTab, user, refreshStatus, loadServerLogs]);
 
-  if (authLoading) return <div className="flex items-center justify-center min-h-screen">Подождите...</div>;
-  if (!profile?.isAdmin) return <div className="flex flex-col items-center justify-center min-h-screen text-destructive gap-4">
-    <ShieldAlert className="w-16 h-16" />
-    <h1 className="text-2xl font-bold">Доступ запрещен</h1>
-    <p>Только администраторы могут просматривать эту страницу.</p>
-    <Button asChild><Link href="/">На главную</Link></Button>
-  </div>;
-
   const apiBadge = getStatusBadge(statusSnapshot.apiOk, "OK", "Недоступен");
   const firestoreBadge = getStatusBadge(statusSnapshot.firestoreOk, "OK", "Ошибка");
   const telegramBadge = statusSnapshot.telegramConfigured === null
@@ -944,32 +1056,236 @@ export default function AdminPage() {
     logs: { title: "Логи", description: "История действий администратора и ответов API." },
   };
   const activeTabMeta = tabMeta[activeTab] || tabMeta.dashboard;
-  const searchPlaceholderByTab: Record<string, string> = {
-    orders: "ID, имя, телефон, email, статус, город",
-    finance: "Товар, комментарий, ID операции",
-    products: "Название, описание, характеристика, цена",
-    users: "Email, имя, телефон, Telegram, VIP",
-    reviews: "Текст, имя, email, статус, ID заказа",
-    logs: "Сообщение, детали, уровень",
-  };
-  const searchResultsCount = (() => {
-    switch (activeTab) {
-      case "orders":
-        return filteredOrders.length;
-      case "finance":
-        return financeTab === "purchases" ? filteredPurchases.length : filteredSales.length;
-      case "products":
-        return filteredProducts.length;
-      case "users":
-        return filteredUsers.length;
-      case "reviews":
-        return filteredReviews.length;
-      case "logs":
-        return filteredLogEntries.length;
-      default:
-        return 0;
-    }
-  })();
+  const globalSearchResults = useMemo<AdminSearchResult[]>(() => {
+    if (searchTokens.length === 0) return [];
+
+    const results: AdminSearchResult[] = [];
+    const addResult = (
+      result: Omit<AdminSearchResult, "score">,
+      values: Array<string | number | null | undefined>,
+      bonus = 0
+    ) => {
+      const score = scoreSearchMatch(searchTokens, values);
+      if (score > 0) {
+        results.push({ ...result, score: score + bonus });
+      }
+    };
+
+    addResult(
+      {
+        id: "section-dashboard",
+        title: "Дашборд",
+        description: "Общая сводка по продажам и клиентам",
+        tab: "dashboard",
+        anchorId: "tab-dashboard",
+      },
+      ["дашборд dashboard аналитика прибыль выручка метрики"],
+      14
+    );
+    addResult(
+      {
+        id: "section-orders",
+        title: "Заказы",
+        description: "Активные заказы и архив",
+        tab: "orders",
+        anchorId: "section-orders-list",
+      },
+      ["заказы заявки покупки статусы доставка"],
+      14
+    );
+    addResult(
+      {
+        id: "section-finance",
+        title: "Финансы",
+        description: "Закупки, продажи и прибыль",
+        tab: "finance",
+        anchorId: "section-finance-operations",
+      },
+      ["финансы деньги продажи закупки выручка прибыль расходы"],
+      14
+    );
+    addResult(
+      {
+        id: "section-products",
+        title: "Товары",
+        description: "Каталог сенсоров и цены",
+        tab: "products",
+        anchorId: "section-products-list",
+      },
+      ["товары каталог сенсоры libre"],
+      14
+    );
+    addResult(
+      {
+        id: "section-users",
+        title: "Клиенты",
+        description: "Профили, VIP уровни и блокировки",
+        tab: "users",
+        anchorId: "section-users-list",
+      },
+      ["клиенты покупатели пользователи заказчики vip лояльность"],
+      14
+    );
+    addResult(
+      {
+        id: "section-reviews",
+        title: "Отзывы",
+        description: "Модерация и публикация отзывов",
+        tab: "reviews",
+        anchorId: "section-reviews-list",
+      },
+      ["отзывы комментарии оценки рейтинг"],
+      14
+    );
+    addResult(
+      {
+        id: "section-settings",
+        title: "Настройки",
+        description: "VIP правила, форма заказа и медиа",
+        tab: "settings",
+        anchorId: "tab-settings",
+      },
+      ["настройки конфиг vip правила форма заказа"],
+      14
+    );
+    addResult(
+      {
+        id: "section-status",
+        title: "Статусы системы",
+        description: "Проверка API, Firestore и Telegram",
+        tab: "status",
+        anchorId: "section-status-overview",
+      },
+      ["статусы система api firestore telegram"],
+      14
+    );
+    addResult(
+      {
+        id: "section-logs",
+        title: "Логи",
+        description: "История действий и ошибок",
+        tab: "logs",
+        anchorId: "section-logs-list",
+      },
+      ["логи журнал события ошибки"],
+      14
+    );
+
+    orders.slice(0, 200).forEach((order) => {
+      addResult(
+        {
+          id: `order-${order.id}`,
+          title: `Заказ #${order.id.slice(-6).toUpperCase()}`,
+          description: `${order.name || "Без имени"} • ${order.totalPrice.toLocaleString()} ₽`,
+          tab: "orders",
+          anchorId: "section-orders-list",
+        },
+        [
+          order.id,
+          order.name,
+          order.userEmail,
+          order.phone,
+          order.phoneE164,
+          order.telegram,
+          order.status,
+          order.city,
+          order.items.map((item) => item.name).join(" "),
+        ],
+        6
+      );
+    });
+
+    purchases.slice(0, 200).forEach((purchase) => {
+      addResult(
+        {
+          id: `purchase-${purchase.id}`,
+          title: `Закупка: ${purchase.productName}`,
+          description: `${purchase.qty} шт. • ${purchase.totalAmount.toLocaleString()} ₽`,
+          tab: "finance",
+          anchorId: "section-finance-operations",
+        },
+        [purchase.id, purchase.productName, purchase.comment, purchase.qty, purchase.totalAmount, "закупка поставка"],
+        5
+      );
+    });
+
+    sales.slice(0, 200).forEach((sale) => {
+      addResult(
+        {
+          id: `sale-${sale.id}`,
+          title: `Продажа: ${sale.productName}`,
+          description: `${sale.qty} шт. • ${sale.totalAmount.toLocaleString()} ₽`,
+          tab: "finance",
+          anchorId: "section-finance-operations",
+        },
+        [sale.id, sale.productName, sale.comment, sale.sourceType, sale.qty, sale.totalAmount, "продажа выручка"],
+        5
+      );
+    });
+
+    users.slice(0, 200).forEach((userItem) => {
+      addResult(
+        {
+          id: `user-${userItem.uid}`,
+          title: userItem.name || userItem.email || `Клиент ${userItem.uid.slice(0, 6)}`,
+          description: `${userItem.email || "Без email"} • VIP ${userItem.loyaltyLevel || 0}`,
+          tab: "users",
+          anchorId: "section-users-list",
+        },
+        [userItem.uid, userItem.name, userItem.email, userItem.phone, userItem.telegram, userItem.loyaltyLevel, "клиент покупатель пользователь vip"],
+        5
+      );
+    });
+
+    products.slice(0, 200).forEach((product) => {
+      addResult(
+        {
+          id: `product-${product.id}`,
+          title: product.name,
+          description: `${product.price.toLocaleString()} ₽ • ${product.inStock ? "В наличии" : "Нет в наличии"}`,
+          tab: "products",
+          anchorId: "section-products-list",
+        },
+        [product.name, product.description, product.features.join(" "), product.price, "товар сенсор каталог"],
+        5
+      );
+    });
+
+    return results
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 12);
+  }, [searchTokens, orders, purchases, sales, users, products]);
+
+  const searchResultsCount = globalSearchResults.length;
+
+  const handleSearchNavigate = useCallback((result: AdminSearchResult) => {
+    setActiveTab(result.tab);
+    const targetId = result.anchorId || `tab-${result.tab}`;
+    const highlightClasses = ["ring-2", "ring-primary/40", "ring-offset-2", "ring-offset-background"];
+
+    const scrollToTarget = (attempt = 0) => {
+      const target = document.getElementById(targetId);
+      if (!target) {
+        if (attempt < 10) {
+          window.setTimeout(() => scrollToTarget(attempt + 1), 80);
+        }
+        return;
+      }
+      target.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+      target.classList.add(...highlightClasses);
+      window.setTimeout(() => target.classList.remove(...highlightClasses), 1300);
+    };
+
+    window.setTimeout(() => scrollToTarget(), 60);
+  }, [reduceMotion]);
+
+  if (authLoading) return <div className="flex items-center justify-center min-h-screen">Подождите...</div>;
+  if (!profile?.isAdmin) return <div className="flex flex-col items-center justify-center min-h-screen text-destructive gap-4">
+    <ShieldAlert className="w-16 h-16" />
+    <h1 className="text-2xl font-bold">Доступ запрещен</h1>
+    <p>Только администраторы могут просматривать эту страницу.</p>
+    <Button asChild><Link href="/">На главную</Link></Button>
+  </div>;
 
   const handleUpdateOrderStatus = async (orderId: string, newStatus: string, stockIssue?: string) => {
     if (!user) return;
@@ -1618,12 +1934,6 @@ export default function AdminPage() {
                     </Button>
                   </>
                 )}
-                {activeTab === "status" && (
-                  <Button className="rounded-xl h-10 px-4" onClick={refreshStatus} disabled={statusLoading}>
-                    {statusLoading ? <RefreshCw className="w-4 h-4 mr-1 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-1" />}
-                    Обновить статус
-                  </Button>
-                )}
               </div>
             </div>
 
@@ -1646,13 +1956,12 @@ export default function AdminPage() {
               <TabsTrigger value="logs" className="rounded-xl px-5 py-2.5 gap-2 data-[state=active]:bg-primary data-[state=active]:text-white transition-all whitespace-nowrap"><ClipboardList className="w-4 h-4" /> Логи</TabsTrigger>
             </TabsList>
 
-            {isSearchableTab ? (
+            <div className="space-y-3">
               <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full">
                 <div className="relative flex-1">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                   <Input 
-                    ref={searchInputRef}
-                    placeholder={`Поиск: ${searchPlaceholderByTab[activeTab] || activeTabMeta.title.toLowerCase()}`} 
+                    placeholder="Поиск по всей админке: клиенты, заказы, товары, продажи, статусы..." 
                     className="pl-9 h-11 bg-background/60 border-white/20 rounded-xl"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
@@ -1660,10 +1969,7 @@ export default function AdminPage() {
                 </div>
                 <div className="flex items-center gap-2">
                   <Badge className="h-11 rounded-xl px-3 bg-background/60 text-foreground border border-white/20">
-                    Найдено: {searchResultsCount}
-                  </Badge>
-                  <Badge className="h-11 rounded-xl px-3 bg-background/60 text-muted-foreground border border-white/20 hidden lg:inline-flex">
-                    Ctrl/Cmd + K
+                    {searchTokens.length > 0 ? `Совпадений: ${searchResultsCount}` : "Поиск готов"}
                   </Badge>
                   <Button
                     variant="outline"
@@ -1671,15 +1977,37 @@ export default function AdminPage() {
                     onClick={() => setSearchQuery("")}
                     disabled={!searchQuery}
                   >
-                    <Filter className="w-4 h-4 mr-1" />
                     Очистить
                   </Button>
                 </div>
               </div>
-            ) : null}
+              {searchTokens.length > 0 && (
+                <div className="rounded-2xl border border-white/20 bg-background/70 backdrop-blur-xl max-h-[340px] overflow-y-auto">
+                  {globalSearchResults.length === 0 ? (
+                    <div className="px-4 py-5 text-sm text-muted-foreground">
+                      Ничего не найдено. Попробуйте другие слова или синонимы.
+                    </div>
+                  ) : (
+                    <div className="p-2">
+                      {globalSearchResults.map((result) => (
+                        <button
+                          key={result.id}
+                          type="button"
+                          className="w-full text-left rounded-xl px-3 py-2.5 hover:bg-muted/60 transition-colors"
+                          onClick={() => handleSearchNavigate(result)}
+                        >
+                          <p className="text-sm font-semibold">{result.title}</p>
+                          <p className="text-xs text-muted-foreground">{result.description}</p>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
-          <TabsContent value="dashboard">
+          <TabsContent value="dashboard" id="tab-dashboard">
             <motion.div {...tabMotion} className="space-y-8">
               <div className="grid md:grid-cols-2 gap-8">
               <Card className="rounded-[2.5rem] border-white/20 shadow-2xl overflow-hidden bg-background/40 backdrop-blur-xl">
@@ -1728,8 +2056,8 @@ export default function AdminPage() {
           </motion.div>
           </TabsContent>
 
-          <TabsContent value="orders">
-            <motion.div {...tabMotion} className="space-y-8">
+          <TabsContent value="orders" id="tab-orders">
+            <motion.div {...tabMotion} className="space-y-8" id="section-orders-list">
             <Card className="rounded-[2.5rem] border-white/20 shadow-2xl overflow-hidden bg-background/40 backdrop-blur-xl">
               <CardHeader className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                 <div>
@@ -2211,8 +2539,8 @@ export default function AdminPage() {
             </motion.div>
           </TabsContent>
 
-          <TabsContent value="products">
-            <motion.div {...tabMotion} className="space-y-8">
+          <TabsContent value="products" id="tab-products">
+            <motion.div {...tabMotion} className="space-y-8" id="section-products-list">
             <Card className="rounded-[2.5rem] border-white/20 shadow-2xl overflow-hidden bg-background/40 backdrop-blur-xl">
               <CardHeader className="flex flex-row items-center justify-between">
                 <div>
@@ -2392,8 +2720,8 @@ export default function AdminPage() {
             </motion.div>
           </TabsContent>
 
-          <TabsContent value="finance">
-            <motion.div {...tabMotion} className="space-y-8">
+          <TabsContent value="finance" id="tab-finance">
+            <motion.div {...tabMotion} className="space-y-8" id="section-finance-operations">
             <div className="grid lg:grid-cols-3 gap-6">
               <Card className="lg:col-span-2 rounded-[2.5rem] border-white/20 shadow-2xl bg-background/40 backdrop-blur-xl">
                 <CardHeader>
@@ -2556,94 +2884,96 @@ export default function AdminPage() {
             </div>
 
             <AnimatePresence mode="wait">
-              <motion.div key={financeTab} {...panelMotion} className="grid gap-4">
-                {financeTab === "purchases" ? (
-                  filteredPurchases.length === 0 ? (
-                    <Card className="rounded-[2.5rem] border-white/20 shadow-xl bg-background/40 backdrop-blur-xl p-12 text-center">
-                      <p className="text-sm text-muted-foreground">Закупок пока нет.</p>
-                    </Card>
-                  ) : (
-                    filteredPurchases.map((purchase) => (
-                        <Card key={purchase.id} className="rounded-[2rem] border-white/20 shadow-xl bg-background/40 backdrop-blur-xl">
-                          <CardContent className="p-4 sm:p-5 space-y-3">
-                          <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
-                            <div>
-                              <p className="text-[10px] uppercase text-muted-foreground">Закупка</p>
-                              <h4 className="text-lg font-black">{purchase.productName}</h4>
-                              <p className="text-xs text-muted-foreground">{formatTimestamp(purchase.date) || "—"}</p>
-                            </div>
-                            <div className="text-left md:text-right">
-                              <p className="text-xl font-black text-red-500">-{purchase.totalAmount.toLocaleString()} ₽</p>
-                              <p className="text-xs text-muted-foreground">{purchase.qty} шт.</p>
-                            </div>
+              <motion.div key={financeTab} {...panelMotion}>
+                <Card className="rounded-[2rem] border-white/20 shadow-xl bg-background/40 backdrop-blur-xl overflow-hidden">
+                  <CardContent className="p-0">
+                    {financeTab === "purchases" ? (
+                      filteredPurchases.length === 0 ? (
+                        <div className="p-10 text-center text-sm text-muted-foreground">Закупок пока нет.</div>
+                      ) : (
+                        <div>
+                          <div className="hidden md:grid grid-cols-[minmax(0,1.7fr)_100px_150px_1fr_auto] gap-4 px-5 py-3 bg-muted/40 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                            <span>Операция</span>
+                            <span>Кол-во</span>
+                            <span>Сумма</span>
+                            <span>Комментарий</span>
+                            <span className="text-right">Действия</span>
                           </div>
-                          {purchase.comment && (
-                            <div className="text-[11px] text-muted-foreground bg-muted/30 border rounded-xl px-3 py-2">
-                              {purchase.comment}
-                            </div>
-                          )}
-                          <div className="flex justify-start md:justify-end gap-2">
-                            <Button size="icon" variant="ghost" className="h-9 w-9 rounded-xl" onClick={() => openPurchaseDialog(purchase)}>
-                              <Pencil className="w-4 h-4" />
-                            </Button>
-                            <Button size="icon" variant="ghost" className="h-9 w-9 rounded-xl text-destructive hover:bg-destructive/10" onClick={() => handleDeletePurchase(purchase.id)}>
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))
-                  )
-                ) : (
-                  filteredSales.length === 0 ? (
-                    <Card className="rounded-[2.5rem] border-white/20 shadow-xl bg-background/40 backdrop-blur-xl p-12 text-center">
-                      <p className="text-sm text-muted-foreground">Продаж пока нет.</p>
-                    </Card>
-                  ) : (
-                    filteredSales.map((sale) => {
-                      const isOrderSale = sale.sourceType === "order";
-                      const saleComment = (sale.comment || "").trim();
-                      const showComment = saleComment && saleComment.toLowerCase() !== "продажа с сайта";
-                      return (
-                        <Card key={sale.id} className="rounded-[2rem] border-white/20 shadow-xl bg-background/40 backdrop-blur-xl">
-                          <CardContent className="p-4 sm:p-5 space-y-3">
-                            <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
-                              <div>
-                                <p className="text-[10px] uppercase text-muted-foreground">Продажа</p>
-                                <h4 className="text-lg font-black">{sale.productName}</h4>
-                                <div className="flex items-center gap-2">
-                                  <p className="text-xs text-muted-foreground">{formatTimestamp(sale.date) || "—"}</p>
-                                  <Badge className={isOrderSale ? "bg-emerald-500/10 text-emerald-500 border-none" : "bg-blue-500/10 text-blue-500 border-none"}>
-                                    {isOrderSale ? "Сайт" : "Ручная"}
-                                  </Badge>
+                          <div className="divide-y divide-white/10">
+                            {filteredPurchases.map((purchase) => (
+                              <div key={purchase.id} className="px-4 py-3 md:px-5 md:py-3.5">
+                                <div className="grid gap-3 md:grid-cols-[minmax(0,1.7fr)_100px_150px_1fr_auto] md:items-center">
+                                  <div className="min-w-0">
+                                    <p className="text-sm font-semibold line-clamp-1">{purchase.productName}</p>
+                                    <p className="text-xs text-muted-foreground">{formatTimestamp(purchase.date) || "—"}</p>
+                                  </div>
+                                  <p className="text-sm font-semibold">{purchase.qty} шт.</p>
+                                  <p className="text-sm font-black text-red-500">-{purchase.totalAmount.toLocaleString()} ₽</p>
+                                  <p className="text-xs text-muted-foreground line-clamp-2">{purchase.comment || "—"}</p>
+                                  <div className="flex items-center justify-end gap-1">
+                                    <Button size="icon" variant="ghost" className="h-8 w-8 rounded-lg" onClick={() => openPurchaseDialog(purchase)}>
+                                      <Pencil className="w-4 h-4" />
+                                    </Button>
+                                    <Button size="icon" variant="ghost" className="h-8 w-8 rounded-lg text-destructive hover:bg-destructive/10" onClick={() => handleDeletePurchase(purchase.id)}>
+                                      <Trash2 className="w-4 h-4" />
+                                    </Button>
+                                  </div>
                                 </div>
                               </div>
-                              <div className="text-left md:text-right">
-                                <p className="text-xl font-black text-emerald-500">+{sale.totalAmount.toLocaleString()} ₽</p>
-                                <p className="text-xs text-muted-foreground">{sale.qty} шт.</p>
+                            ))}
+                          </div>
+                        </div>
+                      )
+                    ) : filteredSales.length === 0 ? (
+                      <div className="p-10 text-center text-sm text-muted-foreground">Продаж пока нет.</div>
+                    ) : (
+                      <div>
+                        <div className="hidden md:grid grid-cols-[minmax(0,1.7fr)_100px_150px_1fr_auto] gap-4 px-5 py-3 bg-muted/40 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                          <span>Операция</span>
+                          <span>Кол-во</span>
+                          <span>Сумма</span>
+                          <span>Комментарий</span>
+                          <span className="text-right">Действия</span>
+                        </div>
+                        <div className="divide-y divide-white/10">
+                          {filteredSales.map((sale) => {
+                            const isOrderSale = sale.sourceType === "order";
+                            const saleComment = (sale.comment || "").trim();
+                            const showComment = saleComment && saleComment.toLowerCase() !== "продажа с сайта";
+                            return (
+                              <div key={sale.id} className="px-4 py-3 md:px-5 md:py-3.5">
+                                <div className="grid gap-3 md:grid-cols-[minmax(0,1.7fr)_100px_150px_1fr_auto] md:items-center">
+                                  <div className="min-w-0">
+                                    <p className="text-sm font-semibold line-clamp-1">{sale.productName}</p>
+                                    <div className="flex items-center gap-2">
+                                      <p className="text-xs text-muted-foreground">{formatTimestamp(sale.date) || "—"}</p>
+                                      <Badge className={isOrderSale ? "bg-emerald-500/10 text-emerald-500 border-none" : "bg-blue-500/10 text-blue-500 border-none"}>
+                                        {isOrderSale ? "Сайт" : "Ручная"}
+                                      </Badge>
+                                    </div>
+                                  </div>
+                                  <p className="text-sm font-semibold">{sale.qty} шт.</p>
+                                  <p className="text-sm font-black text-emerald-500">+{sale.totalAmount.toLocaleString()} ₽</p>
+                                  <p className="text-xs text-muted-foreground line-clamp-2">{showComment ? saleComment : "—"}</p>
+                                  <div className="flex items-center justify-end gap-1">
+                                    <Button size="icon" variant="ghost" className="h-8 w-8 rounded-lg" onClick={() => openSaleDialog(sale)}>
+                                      <Pencil className="w-4 h-4" />
+                                    </Button>
+                                    {!isOrderSale && (
+                                      <Button size="icon" variant="ghost" className="h-8 w-8 rounded-lg text-destructive hover:bg-destructive/10" onClick={() => handleDeleteSale(sale.id)}>
+                                        <Trash2 className="w-4 h-4" />
+                                      </Button>
+                                    )}
+                                  </div>
+                                </div>
                               </div>
-                            </div>
-                            {showComment && (
-                              <div className="text-[11px] text-muted-foreground bg-muted/30 border rounded-xl px-3 py-2">
-                                {saleComment}
-                              </div>
-                            )}
-                            <div className="flex justify-start md:justify-end gap-2">
-                              <Button size="icon" variant="ghost" className="h-9 w-9 rounded-xl" onClick={() => openSaleDialog(sale)}>
-                                <Pencil className="w-4 h-4" />
-                              </Button>
-                              {!isOrderSale && (
-                                <Button size="icon" variant="ghost" className="h-9 w-9 rounded-xl text-destructive hover:bg-destructive/10" onClick={() => handleDeleteSale(sale.id)}>
-                                  <Trash2 className="w-4 h-4" />
-                                </Button>
-                              )}
-                            </div>
-                          </CardContent>
-                        </Card>
-                      );
-                    })
-                  )
-                )}
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
               </motion.div>
             </AnimatePresence>
 
@@ -2763,8 +3093,8 @@ export default function AdminPage() {
             </motion.div>
           </TabsContent>
 
-          <TabsContent value="users">
-            <motion.div {...tabMotion} className="space-y-8">
+          <TabsContent value="users" id="tab-users">
+            <motion.div {...tabMotion} className="space-y-8" id="section-users-list">
             <Card className="rounded-[2.5rem] border-white/20 shadow-2xl overflow-hidden bg-background/40 backdrop-blur-xl">
               <div className="hidden md:block">
               <Table>
@@ -2926,8 +3256,8 @@ export default function AdminPage() {
             </motion.div>
           </TabsContent>
 
-          <TabsContent value="reviews">
-            <motion.div {...tabMotion} className="space-y-8">
+          <TabsContent value="reviews" id="tab-reviews">
+            <motion.div {...tabMotion} className="space-y-8" id="section-reviews-list">
             <Card className="rounded-[2.5rem] border-white/20 shadow-2xl overflow-hidden bg-background/40 backdrop-blur-xl">
               <div className="hidden md:block">
               <Table>
@@ -3090,7 +3420,7 @@ export default function AdminPage() {
             </motion.div>
           </TabsContent>
 
-          <TabsContent value="settings">
+          <TabsContent value="settings" id="tab-settings">
             <motion.div {...tabMotion} className="space-y-8">
             <div className="grid lg:grid-cols-3 gap-8">
               <Card className="rounded-[2rem] border-white/20 shadow-xl bg-background/40 backdrop-blur-xl">
@@ -3310,8 +3640,8 @@ export default function AdminPage() {
           </motion.div>
           </TabsContent>
 
-          <TabsContent value="status">
-            <motion.div {...tabMotion} className="space-y-8">
+          <TabsContent value="status" id="tab-status">
+            <motion.div {...tabMotion} className="space-y-8" id="section-status-overview">
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
               <div>
                 <h3 className="text-2xl font-black">Статусы системы</h3>
@@ -3384,8 +3714,8 @@ export default function AdminPage() {
             </motion.div>
           </TabsContent>
 
-          <TabsContent value="logs">
-            <motion.div {...tabMotion} className="space-y-6">
+          <TabsContent value="logs" id="tab-logs">
+            <motion.div {...tabMotion} className="space-y-6" id="section-logs-list">
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
               <div>
                 <h3 className="text-2xl font-black">Логи</h3>

@@ -50,14 +50,14 @@ export function Hero() {
   }, []);
 
   return (
-    <section className="relative min-h-[92vh] flex items-center pt-24 sm:pt-28 pb-12 overflow-hidden">
+    <section className="relative min-h-[82vh] lg:min-h-[92vh] flex items-center pt-20 sm:pt-24 lg:pt-28 pb-8 sm:pb-12 overflow-hidden">
       <motion.div 
         style={reduceMotion ? undefined : { y: y1, opacity }}
         className="absolute top-[-12%] right-[-8%] -z-10 w-[70%] h-[70%] rounded-full bg-gradient-to-l from-blue-500/25 via-cyan-400/10 to-transparent blur-3xl" 
       />
       <div className="absolute top-[12%] left-[-8%] -z-10 h-[320px] w-[320px] rounded-full bg-primary/15 blur-3xl" />
 
-      <div className="container grid lg:grid-cols-[1.1fr_0.9fr] gap-12 xl:gap-16 items-center">
+      <div className="container grid lg:grid-cols-[1.1fr_0.9fr] gap-8 sm:gap-12 xl:gap-16 items-center">
         <motion.div
           initial={reduceMotion ? false : { opacity: 0, x: -30 }}
           animate={reduceMotion ? undefined : { opacity: 1, x: 0 }}
@@ -78,7 +78,7 @@ export function Hero() {
             Сенсоры непрерывного мониторинга глюкозы
           </p>
           
-          <h1 className="text-4xl sm:text-5xl md:text-6xl xl:text-7xl font-black leading-[1.03] mb-6">
+          <h1 className="text-3xl sm:text-5xl md:text-6xl xl:text-7xl font-black leading-[1.03] mb-5 sm:mb-6">
             Понимать сахар
             <br />
             <span className="headline-gradient">
@@ -86,7 +86,7 @@ export function Hero() {
             </span>
           </h1>
           
-          <p className="text-base sm:text-lg md:text-xl text-muted-foreground mb-8 max-w-2xl leading-relaxed">
+          <p className="text-[15px] sm:text-lg md:text-xl text-muted-foreground mb-7 sm:mb-8 max-w-2xl leading-relaxed">
             Здесь продаются оригинальные сенсоры FreeStyle Libre для ежедневного контроля глюкозы. 
             Вы получаете понятный выбор моделей, быструю доставку и поддержку после покупки.
           </p>
@@ -98,26 +98,6 @@ export function Hero() {
                 <ChevronRight className="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" />
               </a>
             </Button>
-            <Button size="lg" variant="outline" className="h-12 sm:h-14 w-full sm:w-auto px-8 sm:px-10 text-base sm:text-lg rounded-2xl border-2 hover:bg-muted transition-all duration-300" asChild>
-              <a href="#guide">Как это работает</a>
-            </Button>
-          </div>
-
-          <div className="mt-10 grid grid-cols-3 gap-4 sm:flex sm:gap-8">
-            <div className="flex flex-col text-center sm:text-left">
-              <span className="text-2xl font-black">100%</span>
-              <span className="text-xs text-muted-foreground font-bold uppercase tracking-[0.16em]">Оригинал</span>
-            </div>
-            <div className="hidden sm:block w-px h-10 bg-border self-center" />
-            <div className="flex flex-col text-center sm:text-left">
-              <span className="text-2xl font-black">24/7</span>
-              <span className="text-xs text-muted-foreground font-bold uppercase tracking-[0.16em]">Поддержка</span>
-            </div>
-            <div className="hidden sm:block w-px h-10 bg-border self-center" />
-            <div className="flex flex-col text-center sm:text-left">
-              <span className="text-2xl font-black">1500+</span>
-              <span className="text-xs text-muted-foreground font-bold uppercase tracking-[0.16em]">Клиентов</span>
-            </div>
           </div>
         </motion.div>
 
@@ -138,7 +118,7 @@ export function Hero() {
               timeoutMs={1800}
               className="object-cover transition-transform duration-700 group-hover:scale-105"
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/35 via-transparent to-transparent" />
+            <div className="absolute inset-0 bg-gradient-to-t from-background/15 via-transparent to-transparent" />
           </div>
         </motion.div>
       </div>
