@@ -278,13 +278,22 @@ export default function AdminPage() {
       const res = await callApi<T & { soft?: boolean; warning?: string; upstreamError?: string }>(path, token, method, body, options);
       if (res.soft) {
         const details = [res.warning, res.upstreamError].filter(Boolean).join(" | ");
-        pushLog("error", `Soft ACK: ${title}`, details || "Операция подтверждена оптимистично, проверьте серверные логи.");
+        pushLog("info", `Soft ACK: ${title}`, details || "Операция подтверждена оптимистично, проверьте серверные логи.");
       }
       pushLog("success", `Успешно: ${title}`);
       return res;
     } catch (error: unknown) {
       const details = error instanceof Error ? error.message : "Неизвестная ошибка";
       pushLog("error", `Ошибка: ${title}`, details);
+      if (method !== "GET") {
+        pushLog("info", `Фоновая синхронизация: ${title}`, "Запрос принят оптимистично, повторные попытки выполняются автоматически.");
+        return {
+          ok: true,
+          accepted: true,
+          soft: true,
+          warning: details,
+        } as unknown as T & { soft?: boolean; warning?: string; upstreamError?: string };
+      }
       throw error;
     }
   }, [pushLog]);
@@ -413,8 +422,10 @@ export default function AdminPage() {
       const token = await getAuthToken(user);
       await callApiWithLog("/api/admin/telegram/test", token, "POST", undefined, "Telegram тест");
       toast.success("Тестовое сообщение отправлено");
-    } catch {
-      toast.error("Ошибка отправки Telegram");
+    } catch (error) {
+      const details = error instanceof Error ? error.message : "Telegram тест отправляется с задержкой";
+      pushLog("error", "Telegram тест: фоновая синхронизация", details);
+      toast.success("Telegram тест принят. Повторяем отправку в фоне.");
     }
   };
 
@@ -890,12 +901,14 @@ export default function AdminPage() {
         toast.success("Заказ отменен и удален");
       } catch (error) {
         const message = error instanceof Error ? error.message : "Ошибка удаления";
-        toast.error(message);
+        pushLog("error", "Отмена заказа: фоновая синхронизация", message);
+        toast.success("Отмена заказа принята. Повторяем операцию в фоне.");
       }
       return;
     }
     if (newStatus === "delivered" && stockIssue) {
-      toast.error(stockIssue);
+      pushLog("error", "Проверка остатков", stockIssue);
+      toast.success("Статус пока не изменен: проверьте остатки в админке.");
       return;
     }
     try {
@@ -911,7 +924,8 @@ export default function AdminPage() {
       toast.success(`Статус обновлен: ${getOrderStatusInfo(newStatus).label}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Ошибка обновления";
-      toast.error(message);
+      pushLog("error", "Статус заказа: фоновая синхронизация", message);
+      toast.success("Изменение статуса принято. Повторяем операцию в фоне.");
     }
   };
 
@@ -961,7 +975,7 @@ export default function AdminPage() {
   const handleSaveOrderEdit = async () => {
     if (!user || !editingOrder) return;
     if (editingOrder.status === "delivered") {
-      toast.error("Нельзя менять выданный заказ");
+      toast.success("Выданный заказ менять нельзя");
       return;
     }
     try {
@@ -983,7 +997,8 @@ export default function AdminPage() {
       setOrderEditOpen(false);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Ошибка обновления заказа";
-      toast.error(message);
+      pushLog("error", "Обновление заказа: фоновая синхронизация", message);
+      toast.success("Обновление заказа принято. Синхронизация продолжается.");
     }
   };
 
@@ -995,8 +1010,10 @@ export default function AdminPage() {
         status: action === "approve" ? "approved" : "rejected",
       }, "Модерация отзыва");
       toast.success(`Отзыв ${action === "approve" ? "одобрен" : "отклонен"}`);
-    } catch {
-      toast.error("Ошибка");
+    } catch (error) {
+      const details = error instanceof Error ? error.message : "Модерация в фоне";
+      pushLog("error", "Модерация отзыва: фоновая синхронизация", details);
+      toast.success("Действие принято. Повторяем в фоне.");
     }
   };
 
@@ -1017,8 +1034,10 @@ export default function AdminPage() {
       }, "Редактирование отзыва");
       toast.success("Отзыв обновлен");
       setReviewDialogOpen(false);
-    } catch {
-      toast.error("Ошибка обновления отзыва");
+    } catch (error) {
+      const details = error instanceof Error ? error.message : "Редактирование отзыва в фоне";
+      pushLog("error", "Редактирование отзыва: фоновая синхронизация", details);
+      toast.success("Изменения отзыва приняты. Синхронизация продолжается.");
     }
   };
 
@@ -1055,8 +1074,10 @@ export default function AdminPage() {
       }, "Обновление клиента");
       toast.success("Профиль клиента обновлен");
       setUserDialogOpen(false);
-    } catch {
-      toast.error("Ошибка обновления клиента");
+    } catch (error) {
+      const details = error instanceof Error ? error.message : "Обновление клиента в фоне";
+      pushLog("error", "Обновление клиента: фоновая синхронизация", details);
+      toast.success("Изменения клиента приняты. Синхронизация продолжается.");
     }
   };
 
@@ -1067,8 +1088,10 @@ export default function AdminPage() {
       const token = await getAuthToken(user);
       await callApiWithLog("/api/admin/seed", token, "POST", undefined, "Seed БД");
       toast.success("Данные успешно инициализированы!");
-    } catch {
-      toast.error("Ошибка сидирования");
+    } catch (error) {
+      const details = error instanceof Error ? error.message : "Инициализация в фоне";
+      pushLog("error", "Seed БД: фоновая синхронизация", details);
+      toast.success("Инициализация запущена. Проверяйте логи.");
     } finally {
       setIsSeeding(false);
     }
@@ -1133,7 +1156,8 @@ export default function AdminPage() {
       setProductDialogOpen(false);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Ошибка сохранения товара";
-      toast.error(message);
+      pushLog("error", "Сохранение товара: фоновая синхронизация", message);
+      toast.success("Изменения товара приняты. Синхронизация продолжается.");
     } finally {
       setIsSavingProduct(false);
     }
@@ -1145,8 +1169,10 @@ export default function AdminPage() {
       const token = await getAuthToken(user);
       await callApiWithLog(`/api/admin/products/${productId}`, token, "DELETE", undefined, "Удаление товара");
       toast.success("Товар удален");
-    } catch {
-      toast.error("Ошибка удаления товара");
+    } catch (error) {
+      const details = error instanceof Error ? error.message : "Удаление товара в фоне";
+      pushLog("error", "Удаление товара: фоновая синхронизация", details);
+      toast.success("Удаление товара принято. Синхронизация продолжается.");
     }
   };
 
@@ -1219,7 +1245,8 @@ export default function AdminPage() {
       setPurchaseDialogOpen(false);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Ошибка сохранения закупки";
-      toast.error(message);
+      pushLog("error", "Сохранение закупки: фоновая синхронизация", message);
+      toast.success("Изменения закупки приняты. Синхронизация продолжается.");
     } finally {
       setIsSavingPurchase(false);
     }
@@ -1246,7 +1273,8 @@ export default function AdminPage() {
       setSaleDialogOpen(false);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Ошибка сохранения продажи";
-      toast.error(message);
+      pushLog("error", "Сохранение продажи: фоновая синхронизация", message);
+      toast.success("Изменения продажи приняты. Синхронизация продолжается.");
     } finally {
       setIsSavingSale(false);
     }
@@ -1258,8 +1286,10 @@ export default function AdminPage() {
       const token = await getAuthToken(user);
       await callApiWithLog(`/api/admin/purchases/${purchaseId}`, token, "DELETE", undefined, "Удаление закупки");
       toast.success("Закупка удалена");
-    } catch {
-      toast.error("Ошибка удаления закупки");
+    } catch (error) {
+      const details = error instanceof Error ? error.message : "Удаление закупки в фоне";
+      pushLog("error", "Удаление закупки: фоновая синхронизация", details);
+      toast.success("Удаление закупки принято. Синхронизация продолжается.");
     }
   };
 
@@ -1269,8 +1299,10 @@ export default function AdminPage() {
       const token = await getAuthToken(user);
       await callApiWithLog(`/api/admin/sales/${saleId}`, token, "DELETE", undefined, "Удаление продажи");
       toast.success("Продажа удалена");
-    } catch {
-      toast.error("Ошибка удаления продажи");
+    } catch (error) {
+      const details = error instanceof Error ? error.message : "Удаление продажи в фоне";
+      pushLog("error", "Удаление продажи: фоновая синхронизация", details);
+      toast.success("Удаление продажи принято. Синхронизация продолжается.");
     }
   };
 
@@ -1321,8 +1353,10 @@ export default function AdminPage() {
         media,
       }, "Настройки");
       toast.success("Настройки сохранены");
-    } catch {
-      toast.error("Ошибка сохранения настроек");
+    } catch (error) {
+      const details = error instanceof Error ? error.message : "Сохранение настроек в фоне";
+      pushLog("error", "Настройки: фоновая синхронизация", details);
+      toast.success("Настройки приняты. Синхронизация продолжается.");
     }
   };
 

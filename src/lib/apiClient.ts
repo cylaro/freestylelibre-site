@@ -12,13 +12,16 @@ export type ApiCallOptions = {
   retryOnTimeout?: boolean;
   quickAckOnFailure?: boolean;
   backgroundRetry?: boolean;
+  backgroundRetryAttempts?: number;
 };
 
 const DEFAULT_TIMEOUT_MS = 15000;
 const DEFAULT_MUTATION_TIMEOUT_MS = 1800;
-const DEFAULT_GET_RETRIES = 1;
+const DEFAULT_GET_RETRIES = 2;
 const DEFAULT_RETRY_DELAY_MS = 350;
+const DEFAULT_BACKGROUND_RETRY_ATTEMPTS = 3;
 const MUTATION_METHODS = new Set<ApiMethod>(["POST", "PUT", "PATCH", "DELETE"]);
+const TRANSIENT_STATUSES = new Set([408, 425, 429, 500, 502, 503, 504]);
 
 function normalizeUrl(value?: string) {
   if (!value) return "";
@@ -59,10 +62,31 @@ function toSoftSuccess<T extends Record<string, unknown>>(method: ApiMethod, pat
   } as unknown as ApiResponse<T>;
 }
 
-function retryInBackground(url: string, init: RequestInit) {
-  void fetch(url, init).catch(() => {
-    // Silent fallback: optimistic client flow keeps UX responsive.
-  });
+function isTransientStatus(status: number) {
+  return TRANSIENT_STATUSES.has(status);
+}
+
+function getBackoffDelay(baseDelayMs: number, attempt: number) {
+  return Math.min(2500, baseDelayMs * attempt);
+}
+
+function retryInBackground(url: string, init: RequestInit, timeoutMs: number, retryDelayMs: number, attempts: number) {
+  void (async () => {
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      await sleep(getBackoffDelay(retryDelayMs, attempt));
+      try {
+        const response = await fetchWithTimeout(url, init, timeoutMs);
+        if (response.ok) {
+          return;
+        }
+        if (!isTransientStatus(response.status)) {
+          return;
+        }
+      } catch {
+        // Continue retry loop silently.
+      }
+    }
+  })();
 }
 
 export async function callApi<T extends Record<string, unknown> = Record<string, unknown>>(
@@ -97,6 +121,9 @@ export async function callApi<T extends Record<string, unknown> = Record<string,
   const retryOnTimeout = options.retryOnTimeout ?? true;
   const quickAckOnFailure = options.quickAckOnFailure ?? isMutation;
   const backgroundRetry = options.backgroundRetry ?? isMutation;
+  const backgroundRetryAttempts = Number.isFinite(options.backgroundRetryAttempts)
+    ? Math.max(0, Number(options.backgroundRetryAttempts))
+    : DEFAULT_BACKGROUND_RETRY_ATTEMPTS;
   const maxAttempts = retries + 1;
   const url = `${baseUrl}${path}`;
   const requestInit: RequestInit = {
@@ -117,8 +144,8 @@ export async function callApi<T extends Record<string, unknown> = Record<string,
         continue;
       }
       if (quickAckOnFailure) {
-        if (backgroundRetry) {
-          retryInBackground(url, requestInit);
+        if (backgroundRetry && backgroundRetryAttempts > 0) {
+          retryInBackground(url, requestInit, timeoutMs, retryDelayMs, backgroundRetryAttempts);
         }
         return toSoftSuccess<T>(method, path, isAbort ? "TIMEOUT_SOFT_ACK" : "NETWORK_SOFT_ACK");
       }
@@ -130,15 +157,19 @@ export async function callApi<T extends Record<string, unknown> = Record<string,
       return data;
     }
 
-    const canRetry = attempt < maxAttempts && method === "GET" && res.status >= 500;
+    if (res.status === 401 || res.status === 403) {
+      throw new Error(data.error || "UNAUTHORIZED");
+    }
+
+    const canRetry = attempt < maxAttempts && method === "GET" && isTransientStatus(res.status);
     if (canRetry) {
       await sleep(retryDelayMs * attempt);
       continue;
     }
 
     if (quickAckOnFailure) {
-      if (backgroundRetry && res.status >= 500) {
-        retryInBackground(url, requestInit);
+      if (backgroundRetry && backgroundRetryAttempts > 0 && isTransientStatus(res.status)) {
+        retryInBackground(url, requestInit, timeoutMs, retryDelayMs, backgroundRetryAttempts);
       }
       return {
         ...toSoftSuccess<T>(method, path, `HTTP_${res.status}_SOFT_ACK`),
@@ -150,8 +181,8 @@ export async function callApi<T extends Record<string, unknown> = Record<string,
   }
 
   if (quickAckOnFailure) {
-    if (backgroundRetry) {
-      retryInBackground(url, requestInit);
+    if (backgroundRetry && backgroundRetryAttempts > 0) {
+      retryInBackground(url, requestInit, timeoutMs, retryDelayMs, backgroundRetryAttempts);
     }
     return toSoftSuccess<T>(method, path, "UNKNOWN_SOFT_ACK");
   }
