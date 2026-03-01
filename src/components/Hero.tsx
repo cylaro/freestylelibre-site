@@ -4,43 +4,29 @@ import React, { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { motion, useReducedMotion, useScroll, useTransform } from "framer-motion";
 import { ChevronRight, Zap } from "lucide-react";
-import { db } from "@/lib/firebase";
-import { doc, getDoc } from "firebase/firestore";
-import { normalizeSettings, settingsDefaults } from "@/lib/schemas";
+import { settingsDefaults } from "@/lib/schemas";
 import { ResilientImage } from "@/components/ui/resilient-image";
-import { callApi } from "@/lib/apiClient";
+import { getPublicSettingsCached, getPublicSettingsSnapshot } from "@/lib/publicData";
 
 export function Hero() {
   const { scrollY } = useScroll();
   const reduceMotion = useReducedMotion();
   const y1 = useTransform(scrollY, [0, 500], [0, 150]);
   const opacity = useTransform(scrollY, [0, 420], [1, 0.35]);
-  const [heroImageUrl, setHeroImageUrl] = useState(settingsDefaults.media.heroImageUrl);
+  const [heroImageUrl, setHeroImageUrl] = useState(
+    () => getPublicSettingsSnapshot()?.media.heroImageUrl || settingsDefaults.media.heroImageUrl
+  );
 
   useEffect(() => {
     let active = true;
     const loadSettings = async () => {
       try {
-        const response = await callApi<{ settings?: unknown }>("/api/public/settings", undefined, "GET");
         if (!active) return;
-        if (response.settings) {
-          const settings = normalizeSettings(response.settings);
-          setHeroImageUrl(settings.media.heroImageUrl || settingsDefaults.media.heroImageUrl);
-          return;
-        }
-      } catch {
-        // fallback to Firestore below
-      }
-
-      try {
-        const settingsDoc = await getDoc(doc(db, "settings", "config"));
-        if (!active) return;
-        if (settingsDoc.exists()) {
-          const settings = normalizeSettings(settingsDoc.data());
-          setHeroImageUrl(settings.media.heroImageUrl || settingsDefaults.media.heroImageUrl);
-        }
+        const settings = await getPublicSettingsCached();
+        setHeroImageUrl(settings.media.heroImageUrl || settingsDefaults.media.heroImageUrl);
       } catch (error) {
         console.error("Failed to load settings", error);
+        setHeroImageUrl(settingsDefaults.media.heroImageUrl);
       }
     };
     loadSettings();

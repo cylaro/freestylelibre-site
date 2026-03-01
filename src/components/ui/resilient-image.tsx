@@ -21,49 +21,27 @@ export function ResilientImage({
   alt,
   ...rest
 }: ResilientImageProps) {
+  void timeoutMs;
   const primarySrc = useMemo(() => normalizeSrc(src), [src]);
   const fallback = useMemo(() => normalizeSrc(fallbackSrc), [fallbackSrc]);
   const [resolvedSrc, setResolvedSrc] = useState(primarySrc || fallback);
 
   useEffect(() => {
-    const candidate = primarySrc || fallback;
-    setResolvedSrc(candidate);
+    setResolvedSrc(primarySrc || fallback);
+  }, [primarySrc, fallback]);
 
-    if (!primarySrc || primarySrc === fallback) return;
-    if (typeof window === "undefined") return;
-
-    let active = true;
-    const probe = new window.Image();
-    const timer = window.setTimeout(() => {
-      if (active) setResolvedSrc(fallback);
-    }, Math.max(300, timeoutMs));
-
-    probe.onload = () => {
-      if (!active) return;
-      window.clearTimeout(timer);
-      setResolvedSrc(primarySrc);
-    };
-    probe.onerror = () => {
-      if (!active) return;
-      window.clearTimeout(timer);
-      setResolvedSrc(fallback);
-    };
-    probe.src = primarySrc;
-
-    return () => {
-      active = false;
-      window.clearTimeout(timer);
-      probe.onload = null;
-      probe.onerror = null;
-    };
-  }, [primarySrc, fallback, timeoutMs]);
+  const shouldLazyLoad = rest.priority ? false : rest.loading === undefined;
+  const loading = shouldLazyLoad ? "lazy" : rest.loading;
 
   return (
     <Image
       {...rest}
       src={resolvedSrc || fallback}
       alt={alt}
-      onError={() => {
+      loading={loading}
+      decoding={rest.decoding || "async"}
+      onError={(event) => {
+        rest.onError?.(event);
         if (resolvedSrc !== fallback) {
           setResolvedSrc(fallback);
         }

@@ -209,6 +209,8 @@
 
   .section-shell {
     @apply py-20 md:py-24;
+    content-visibility: auto;
+    contain-intrinsic-size: 1px 900px;
   }
 
   .balanced-grid {

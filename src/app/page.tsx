@@ -1,3 +1,4 @@
+import dynamic from "next/dynamic";
 import { Navbar } from "@/components/Navbar";
 import { Hero } from "@/components/Hero";
 import { Advantages } from "@/components/Advantages";
@@ -6,8 +7,9 @@ import { Guide } from "@/components/Guide";
 import { FAQ } from "@/components/FAQ";
 import { Reviews } from "@/components/Reviews";
 import { Footer } from "@/components/Footer";
-import { CartSheet } from "@/components/CartSheet";
-import { HomeClientFx } from "@/components/HomeClientFx";
+
+const CartSheet = dynamic(() => import("@/components/CartSheet").then((mod) => mod.CartSheet));
+const HomeClientFx = dynamic(() => import("@/components/HomeClientFx").then((mod) => mod.HomeClientFx));
 
 export default function Home() {
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://freestylelibre.pro";

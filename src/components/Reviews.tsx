@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
-import { collection, onSnapshot, orderBy, query, where, limit } from "firebase/firestore";
+import { collection, getDocs, limit, orderBy, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { normalizeReview, Review } from "@/lib/schemas";
 import { Star } from "lucide-react";
@@ -12,16 +12,29 @@ export function Reviews() {
   const reduceMotion = useReducedMotion();
 
   useEffect(() => {
-    const q = query(
-      collection(db, "reviews"),
-      where("status", "==", "approved"),
-      orderBy("createdAt", "desc"),
-      limit(6)
-    );
-    const unsub = onSnapshot(q, (snap) => {
-      setReviews(snap.docs.map(doc => normalizeReview(doc.id, doc.data())));
-    });
-    return () => unsub();
+    let active = true;
+    const loadReviews = async () => {
+      try {
+        const q = query(
+          collection(db, "reviews"),
+          where("status", "==", "approved"),
+          orderBy("createdAt", "desc"),
+          limit(6)
+        );
+        const snap = await getDocs(q);
+        if (!active) return;
+        setReviews(snap.docs.map((docSnap) => normalizeReview(docSnap.id, docSnap.data())));
+      } catch (error) {
+        if (!active) return;
+        console.error("Failed to load reviews", error);
+        setReviews([]);
+      }
+    };
+
+    loadReviews();
+    return () => {
+      active = false;
+    };
   }, []);
 
   return (

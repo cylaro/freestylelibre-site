@@ -1,10 +1,10 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
-import { collection, onSnapshot, query, where, orderBy } from "firebase/firestore";
+import { collection, getDocs, orderBy, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { normalizeProduct, Product } from "@/lib/schemas";
-import { callApi } from "@/lib/apiClient";
+import { getPublicProductsCached, getPublicProductsSnapshot } from "@/lib/publicData";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -14,8 +14,8 @@ import { Check, PackageCheck } from "lucide-react";
 import { ResilientImage } from "@/components/ui/resilient-image";
 
 export function Catalog() {
-  const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [products, setProducts] = useState<Product[]>(() => getPublicProductsSnapshot() || []);
+  const [loading, setLoading] = useState(() => products.length === 0);
   const [error, setError] = useState<string | null>(null);
   const [addedId, setAddedId] = useState<string | null>(null);
   const resetTimerRef = useRef<number | null>(null);
@@ -23,48 +23,41 @@ export function Catalog() {
   const reduceMotion = useReducedMotion();
 
   useEffect(() => {
-    let mounted = true;
-    let hasData = false;
-
-    const loadViaApi = async () => {
+    let active = true;
+    const loadProducts = async () => {
       try {
-        const result = await callApi<{ products?: unknown[] }>("/api/public/products", undefined, "GET");
-        if (!mounted || !Array.isArray(result.products)) return;
-        setProducts(result.products.map((item, index) => normalizeProduct(String((item as { id?: string })?.id || `p-${index}`), item)));
-        hasData = true;
+        const cachedProducts = await getPublicProductsCached();
+        if (!active) return;
+        setProducts(cachedProducts);
         setLoading(false);
         setError(null);
+        return;
       } catch {
-        // Firestore realtime listener below remains fallback source.
+        // Firestore fallback below remains as resilience path.
+      }
+
+      try {
+        const q = query(collection(db, "products"), where("active", "==", true), orderBy("sortOrder", "asc"));
+        const snapshot = await getDocs(q);
+        if (!active) return;
+        setProducts(snapshot.docs.map((docSnap) => normalizeProduct(docSnap.id, docSnap.data())));
+        setLoading(false);
+        setError(null);
+      } catch (err: unknown) {
+        if (!active) return;
+        const firebaseErr = err as { code?: string };
+        const message = firebaseErr?.code === "failed-precondition"
+          ? "Для запроса нужен индекс Firestore. Создайте индекс и обновите страницу."
+          : "Не удалось загрузить каталог. Проверьте правила Firestore и подключение.";
+        setError(message);
+        setLoading(false);
       }
     };
 
-    loadViaApi();
-
-    const q = query(collection(db, "products"), where("active", "==", true), orderBy("sortOrder", "asc"));
-    const unsubscribe = onSnapshot(
-      q,
-      (snapshot) => {
-        const prods = snapshot.docs.map(doc => normalizeProduct(doc.id, doc.data()));
-        hasData = true;
-        setProducts(prods);
-        setLoading(false);
-        setError(null);
-      },
-      (err) => {
-        const message = err?.code === "failed-precondition"
-          ? "Для запроса нужен индекс Firestore. Создайте индекс и обновите страницу."
-          : "Не удалось загрузить каталог. Проверьте правила Firestore и подключение.";
-        if (!hasData) {
-          setError(message);
-          setLoading(false);
-        }
-      }
-    );
+    loadProducts();
 
     return () => {
-      mounted = false;
-      unsubscribe();
+      active = false;
     };
   }, []);
 

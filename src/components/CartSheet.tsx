@@ -21,8 +21,6 @@ import {
   Truck,
   User
 } from "lucide-react";
-import { db } from "@/lib/firebase";
-import { doc, getDoc } from "firebase/firestore";
 import { toast } from "sonner";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { motion, AnimatePresence, useAnimation, useReducedMotion } from "framer-motion";
@@ -31,6 +29,7 @@ import { normalizeSettings, settingsDefaults, OrderFormField } from "@/lib/schem
 import { ResilientImage } from "@/components/ui/resilient-image";
 import { getAuthToken } from "@/lib/authToken";
 import { callApi } from "@/lib/apiClient";
+import { getPublicSettingsCached } from "@/lib/publicData";
 
 type CheckoutFormData = {
   deliveryMethod: "pickup" | "delivery";
@@ -77,22 +76,8 @@ export function CartSheet() {
       };
 
       try {
-        const response = await callApi<{ settings?: unknown }>("/api/public/settings", undefined, "GET");
-        if (response.settings) {
-          applySettings(response.settings);
-          return;
-        }
-      } catch {
-        // Firestore fallback below.
-      }
-
-      try {
-        const settingsDoc = await getDoc(doc(db, "settings", "config"));
-        if (settingsDoc.exists()) {
-          applySettings(settingsDoc.data());
-        } else {
-          applySettings(settingsDefaults);
-        }
+        const settings = await getPublicSettingsCached();
+        applySettings(settings);
       } catch (error) {
         console.error("Error loading settings", error);
         applySettings(settingsDefaults);
