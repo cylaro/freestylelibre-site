@@ -33,6 +33,24 @@ export function Navbar() {
   const router = useRouter();
   const pathname = usePathname();
 
+  const navigateWithTransition = (href: string) => (event: React.MouseEvent<HTMLAnchorElement>) => {
+    event.preventDefault();
+    setIsProfileOpen(false);
+    const navigate = () => router.push(href);
+    if (reduceMotion) {
+      navigate();
+      return;
+    }
+    const documentWithTransition = document as Document & {
+      startViewTransition?: (callback: () => void) => void;
+    };
+    if (typeof documentWithTransition.startViewTransition === "function") {
+      documentWithTransition.startViewTransition(() => navigate());
+      return;
+    }
+    navigate();
+  };
+
   const handleScrollTo = (id: string) => (event: React.MouseEvent<HTMLAnchorElement>) => {
     event.preventDefault();
     setIsMobileMenuOpen(false);
@@ -107,14 +125,14 @@ export function Navbar() {
                     className="w-60 rounded-[1.25rem] p-2 bg-background/80 backdrop-blur-xl border border-white/20 shadow-[0_20px_45px_rgba(0,0,0,0.25)]"
                   >
                     <DropdownMenuItem asChild className="rounded-xl px-4 py-3 cursor-pointer bg-transparent hover:bg-white/10 focus:bg-white/10">
-                      <Link href="/account" className="flex items-center gap-2 font-medium">
+                      <Link href="/account" onClick={navigateWithTransition("/account")} className="flex items-center gap-2 font-medium">
                         <User className="w-4 h-4" />
                         Личный кабинет
                       </Link>
                     </DropdownMenuItem>
                     {profile?.isAdmin && (
                       <DropdownMenuItem asChild className="rounded-xl px-4 py-3 cursor-pointer bg-transparent hover:bg-white/10 focus:bg-white/10">
-                        <Link href="/admin" className="flex items-center gap-2 font-medium">
+                        <Link href="/admin" onClick={navigateWithTransition("/admin")} className="flex items-center gap-2 font-medium">
                           <LayoutDashboard className="w-4 h-4" />
                           Админ-панель
                         </Link>
