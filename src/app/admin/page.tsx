@@ -123,16 +123,22 @@ const SEARCH_SYNONYMS: Record<string, string[]> = {
   клиенты: ["покупатели", "пользователи", "заказчики", "customer", "customers"],
   покупатели: ["клиенты", "пользователи", "заказчики"],
   пользователи: ["клиенты", "покупатели"],
+  клиент: ["клиенты", "покупатель", "покупатели"],
   заказы: ["заявки", "покупки", "orders", "order"],
+  заказ: ["заказы", "заявка", "orders"],
   заявки: ["заказы", "покупки"],
   финансы: ["деньги", "прибыль", "выручка", "расходы", "бухгалтерия"],
   закупки: ["приход", "поставки", "поставка"],
+  склад: ["остатки", "инвентарь", "stock"],
+  остатки: ["склад", "инвентарь", "stock"],
   продажи: ["реализация", "выручка", "sales", "sale"],
+  продажа: ["продажи", "sale", "sales"],
   товары: ["каталог", "сенсоры", "продукты", "products", "product"],
   отзывы: ["оценки", "комментарии", "reviews", "review"],
   логи: ["журнал", "logs", "log"],
   статусы: ["система", "здоровье", "health", "monitoring"],
-  vip: ["лояльность", "скидка", "уровень"],
+  vip: ["лояльность", "скидка", "уровень", "привилегии"],
+  телеграм: ["telegram", "tg", "бот"],
 };
 
 const SEARCH_ALIAS_MAP = (() => {
@@ -293,6 +299,7 @@ export default function AdminPage() {
   const reviewAutofillRef = useRef<Set<string>>(new Set());
   
   const [searchQuery, setSearchQuery] = useState("");
+  const [financeQuery, setFinanceQuery] = useState("");
   const [isSeeding, setIsSeeding] = useState(false);
   const [isSavingProduct, setIsSavingProduct] = useState(false);
   const [isSavingPurchase, setIsSavingPurchase] = useState(false);
@@ -773,11 +780,16 @@ export default function AdminPage() {
 
 
   const searchTokens = useMemo(() => tokenizeSearch(searchQuery), [searchQuery]);
+  const financeTokens = useMemo(() => tokenizeSearch(financeQuery), [financeQuery]);
+
+  const matchesTokens = useCallback((tokens: string[], values: Array<string | number | null | undefined>) => {
+    if (tokens.length === 0) return true;
+    return scoreSearchMatch(tokens, values) > 0;
+  }, []);
 
   const matchesSearch = useCallback((values: Array<string | number | null | undefined>) => {
-    if (searchTokens.length === 0) return true;
-    return scoreSearchMatch(searchTokens, values) > 0;
-  }, [searchTokens]);
+    return matchesTokens(searchTokens, values);
+  }, [searchTokens, matchesTokens]);
 
   const filteredOrders = useMemo(() => {
     const base = orders.filter((order) => matchesSearch([
@@ -867,6 +879,31 @@ export default function AdminPage() {
       "продажи реализация выручка",
     ]));
   }, [sales, matchesSearch]);
+
+  const filteredFinancePurchases = useMemo(() => {
+    return filteredPurchases.filter((purchase) => matchesTokens(financeTokens, [
+      purchase.productName,
+      purchase.comment,
+      purchase.id,
+      purchase.qty,
+      purchase.totalAmount,
+      "закупки расходы поставка приход",
+    ]));
+  }, [filteredPurchases, financeTokens, matchesTokens]);
+
+  const filteredFinanceSales = useMemo(() => {
+    return filteredSales.filter((sale) => matchesTokens(financeTokens, [
+      sale.productName,
+      sale.comment,
+      sale.id,
+      sale.sourceType,
+      sale.qty,
+      sale.totalAmount,
+      "продажи выручка реализация ручная сайт",
+    ]));
+  }, [filteredSales, financeTokens, matchesTokens]);
+
+  const financeVisibleCount = financeTab === "purchases" ? filteredFinancePurchases.length : filteredFinanceSales.length;
 
   const filteredLogEntries = useMemo(() => {
     return logEntries.filter((entry) => matchesSearch([
@@ -1900,7 +1937,7 @@ export default function AdminPage() {
                 <h3 className="text-2xl sm:text-3xl font-black">{stats.avgOrderValue.toLocaleString()} ₽</h3>
                 <p className="text-xs text-muted-foreground mt-1">На один заказ</p>
               </div>
-              <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-purple-500/10 flex items-center justify-center text-purple-500">
+              <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-cyan-500/10 flex items-center justify-center text-cyan-500">
                 <BarChart3 className="w-6 h-6 sm:w-7 sm:h-7" />
               </div>
             </CardContent>
@@ -1909,51 +1946,29 @@ export default function AdminPage() {
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-8">
           <div className="glass-panel rounded-[1.5rem] p-4 sm:p-5 space-y-4">
-            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-muted-foreground mb-1">Админ-панель</p>
-                <h2 className="text-2xl font-black leading-tight">{activeTabMeta.title}</h2>
-                <p className="text-sm text-muted-foreground mt-1">{activeTabMeta.description}</p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                {activeTab === "products" && (
-                  <Button className="rounded-xl h-10 px-4" onClick={() => openProductDialog()}>
-                    <Plus className="w-4 h-4 mr-1" />
-                    Новый товар
-                  </Button>
-                )}
-                {activeTab === "finance" && (
-                  <>
-                    <Button className="rounded-xl h-10 px-4" onClick={() => openPurchaseDialog()}>
-                      <Plus className="w-4 h-4 mr-1" />
-                      Закупка
-                    </Button>
-                    <Button variant="outline" className="rounded-xl h-10 px-4" onClick={() => openSaleDialog()}>
-                      <Plus className="w-4 h-4 mr-1" />
-                      Продажа
-                    </Button>
-                  </>
-                )}
-              </div>
+            <div className="space-y-1">
+              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-muted-foreground">Админ-панель</p>
+              <h2 className="text-2xl font-black leading-tight">{activeTabMeta.title}</h2>
+              <p className="text-sm text-muted-foreground">{activeTabMeta.description}</p>
             </div>
 
-            <TabsList className="bg-background/60 backdrop-blur-xl border-white/20 p-1.5 h-auto rounded-2xl gap-2 flex w-full flex-nowrap overflow-x-auto md:flex-wrap md:overflow-x-visible">
-              <TabsTrigger value="dashboard" className="rounded-xl px-5 py-2.5 gap-2 data-[state=active]:bg-primary data-[state=active]:text-white transition-all whitespace-nowrap"><BarChart3 className="w-4 h-4" /> Дашборд</TabsTrigger>
-              <TabsTrigger value="orders" className="rounded-xl px-5 py-2.5 gap-2 data-[state=active]:bg-primary data-[state=active]:text-white transition-all whitespace-nowrap"><ShoppingCart className="w-4 h-4" /> Заказы</TabsTrigger>
-              <TabsTrigger value="finance" className="rounded-xl px-5 py-2.5 gap-2 data-[state=active]:bg-primary data-[state=active]:text-white transition-all whitespace-nowrap"><Wallet className="w-4 h-4" /> Финансы</TabsTrigger>
-              <TabsTrigger value="products" className="rounded-xl px-5 py-2.5 gap-2 data-[state=active]:bg-primary data-[state=active]:text-white transition-all whitespace-nowrap"><Package className="w-4 h-4" /> Товары</TabsTrigger>
-              <TabsTrigger value="users" className="rounded-xl px-5 py-2.5 gap-2 data-[state=active]:bg-primary data-[state=active]:text-white transition-all whitespace-nowrap"><Users className="w-4 h-4" /> Клиенты</TabsTrigger>
-              <TabsTrigger value="reviews" className="rounded-xl px-5 py-2.5 gap-2 data-[state=active]:bg-primary data-[state=active]:text-white transition-all relative whitespace-nowrap">
-                <MessageSquare className="w-4 h-4" /> Отзывы
+            <TabsList className="bg-background/60 backdrop-blur-xl border-white/20 p-1.5 h-auto rounded-2xl gap-1.5 grid grid-cols-3 md:grid-cols-5 xl:grid-cols-9 w-full">
+              <TabsTrigger value="dashboard" className="rounded-xl h-10 px-2 gap-1.5 data-[state=active]:bg-primary data-[state=active]:text-white transition-all text-[11px] sm:text-sm"><BarChart3 className="w-3.5 h-3.5" /> Дашборд</TabsTrigger>
+              <TabsTrigger value="orders" className="rounded-xl h-10 px-2 gap-1.5 data-[state=active]:bg-primary data-[state=active]:text-white transition-all text-[11px] sm:text-sm"><ShoppingCart className="w-3.5 h-3.5" /> Заказы</TabsTrigger>
+              <TabsTrigger value="finance" className="rounded-xl h-10 px-2 gap-1.5 data-[state=active]:bg-primary data-[state=active]:text-white transition-all text-[11px] sm:text-sm"><Wallet className="w-3.5 h-3.5" /> Финансы</TabsTrigger>
+              <TabsTrigger value="products" className="rounded-xl h-10 px-2 gap-1.5 data-[state=active]:bg-primary data-[state=active]:text-white transition-all text-[11px] sm:text-sm"><Package className="w-3.5 h-3.5" /> Товары</TabsTrigger>
+              <TabsTrigger value="users" className="rounded-xl h-10 px-2 gap-1.5 data-[state=active]:bg-primary data-[state=active]:text-white transition-all text-[11px] sm:text-sm"><Users className="w-3.5 h-3.5" /> Клиенты</TabsTrigger>
+              <TabsTrigger value="reviews" className="rounded-xl h-10 px-2 gap-1.5 data-[state=active]:bg-primary data-[state=active]:text-white transition-all text-[11px] sm:text-sm relative">
+                <MessageSquare className="w-3.5 h-3.5" /> Отзывы
                 {pendingReviewsCount > 0 && (
                   <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center border-2 border-background">
                     {pendingReviewsCount}
                   </span>
                 )}
               </TabsTrigger>
-              <TabsTrigger value="settings" className="rounded-xl px-5 py-2.5 gap-2 data-[state=active]:bg-primary data-[state=active]:text-white transition-all whitespace-nowrap"><Settings className="w-4 h-4" /> Настройки</TabsTrigger>
-              <TabsTrigger value="status" className="rounded-xl px-5 py-2.5 gap-2 data-[state=active]:bg-primary data-[state=active]:text-white transition-all whitespace-nowrap"><Activity className="w-4 h-4" /> Статусы</TabsTrigger>
-              <TabsTrigger value="logs" className="rounded-xl px-5 py-2.5 gap-2 data-[state=active]:bg-primary data-[state=active]:text-white transition-all whitespace-nowrap"><ClipboardList className="w-4 h-4" /> Логи</TabsTrigger>
+              <TabsTrigger value="settings" className="rounded-xl h-10 px-2 gap-1.5 data-[state=active]:bg-primary data-[state=active]:text-white transition-all text-[11px] sm:text-sm"><Settings className="w-3.5 h-3.5" /> Настройки</TabsTrigger>
+              <TabsTrigger value="status" className="rounded-xl h-10 px-2 gap-1.5 data-[state=active]:bg-primary data-[state=active]:text-white transition-all text-[11px] sm:text-sm"><Activity className="w-3.5 h-3.5" /> Статусы</TabsTrigger>
+              <TabsTrigger value="logs" className="rounded-xl h-10 px-2 gap-1.5 data-[state=active]:bg-primary data-[state=active]:text-white transition-all text-[11px] sm:text-sm"><ClipboardList className="w-3.5 h-3.5" /> Логи</TabsTrigger>
             </TabsList>
 
             <div className="space-y-3">
@@ -1981,6 +1996,20 @@ export default function AdminPage() {
                   </Button>
                 </div>
               </div>
+              {searchTokens.length === 0 && (
+                <div className="flex flex-wrap items-center gap-2">
+                  {["новые заказы", "клиенты", "закупки", "продажи", "vip", "telegram"].map((hint) => (
+                    <button
+                      key={hint}
+                      type="button"
+                      onClick={() => setSearchQuery(hint)}
+                      className="h-8 rounded-full px-3 text-xs font-semibold border border-white/20 bg-background/50 hover:bg-muted/60 transition-colors"
+                    >
+                      {hint}
+                    </button>
+                  ))}
+                </div>
+              )}
               {searchTokens.length > 0 && (
                 <div className="rounded-2xl border border-white/20 bg-background/70 backdrop-blur-xl max-h-[340px] overflow-y-auto">
                   {globalSearchResults.length === 0 ? (
@@ -1996,8 +2025,13 @@ export default function AdminPage() {
                           className="w-full text-left rounded-xl px-3 py-2.5 hover:bg-muted/60 transition-colors"
                           onClick={() => handleSearchNavigate(result)}
                         >
-                          <p className="text-sm font-semibold">{result.title}</p>
-                          <p className="text-xs text-muted-foreground">{result.description}</p>
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-sm font-semibold line-clamp-1">{result.title}</p>
+                            <Badge className="shrink-0 rounded-full border-none bg-primary/10 text-primary text-[10px]">
+                              {tabMeta[result.tab]?.title || "Раздел"}
+                            </Badge>
+                          </div>
+                          <p className="text-xs text-muted-foreground line-clamp-1">{result.description}</p>
                         </button>
                       ))}
                     </div>
@@ -2858,28 +2892,42 @@ export default function AdminPage() {
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
               <div>
                 <h3 className="text-2xl font-black">Операции</h3>
-                <p className="text-sm text-muted-foreground">Ручные продажи и закупки</p>
+                <p className="text-sm text-muted-foreground">Ручные продажи и закупки без перегруза</p>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Button
-                  variant={financeTab === "purchases" ? "default" : "outline"}
-                  className="rounded-xl"
-                  onClick={() => setFinanceTab("purchases")}
-                >
-                  Закупки
-                </Button>
-                <Button
-                  variant={financeTab === "sales" ? "default" : "outline"}
-                  className="rounded-xl"
-                  onClick={() => setFinanceTab("sales")}
-                >
-                  Продажи
-                </Button>
-                {financeTab === "purchases" ? (
-                  <Button className="rounded-xl" onClick={() => openPurchaseDialog()}>Добавить закупку</Button>
-                ) : (
-                  <Button className="rounded-xl" onClick={() => openSaleDialog()}>Добавить продажу</Button>
-                )}
+              <div className="w-full md:w-auto flex flex-col sm:flex-row sm:items-center gap-2">
+                <div className="relative flex-1 md:min-w-[260px]">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    value={financeQuery}
+                    onChange={(e) => setFinanceQuery(e.target.value)}
+                    placeholder={financeTab === "purchases" ? "Найти закупку..." : "Найти продажу..."}
+                    className="h-10 pl-9 rounded-xl bg-background/60 border-white/20"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant={financeTab === "purchases" ? "default" : "outline"}
+                    className="rounded-xl h-10"
+                    onClick={() => setFinanceTab("purchases")}
+                  >
+                    Закупки
+                  </Button>
+                  <Button
+                    variant={financeTab === "sales" ? "default" : "outline"}
+                    className="rounded-xl h-10"
+                    onClick={() => setFinanceTab("sales")}
+                  >
+                    Продажи
+                  </Button>
+                  {financeTab === "purchases" ? (
+                    <Button className="rounded-xl h-10" onClick={() => openPurchaseDialog()}>Добавить</Button>
+                  ) : (
+                    <Button className="rounded-xl h-10" onClick={() => openSaleDialog()}>Добавить</Button>
+                  )}
+                  <Badge className="h-10 rounded-xl px-3 bg-background/60 border border-white/20 text-foreground">
+                    {financeVisibleCount}
+                  </Badge>
+                </div>
               </div>
             </div>
 
@@ -2888,8 +2936,10 @@ export default function AdminPage() {
                 <Card className="rounded-[2rem] border-white/20 shadow-xl bg-background/40 backdrop-blur-xl overflow-hidden">
                   <CardContent className="p-0">
                     {financeTab === "purchases" ? (
-                      filteredPurchases.length === 0 ? (
-                        <div className="p-10 text-center text-sm text-muted-foreground">Закупок пока нет.</div>
+                      filteredFinancePurchases.length === 0 ? (
+                        <div className="p-10 text-center text-sm text-muted-foreground">
+                          {financeQuery ? "Закупки по запросу не найдены." : "Закупок пока нет."}
+                        </div>
                       ) : (
                         <div>
                           <div className="hidden md:grid grid-cols-[minmax(0,1.7fr)_100px_150px_1fr_auto] gap-4 px-5 py-3 bg-muted/40 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
@@ -2900,9 +2950,9 @@ export default function AdminPage() {
                             <span className="text-right">Действия</span>
                           </div>
                           <div className="divide-y divide-white/10">
-                            {filteredPurchases.map((purchase) => (
-                              <div key={purchase.id} className="px-4 py-3 md:px-5 md:py-3.5">
-                                <div className="grid gap-3 md:grid-cols-[minmax(0,1.7fr)_100px_150px_1fr_auto] md:items-center">
+                            {filteredFinancePurchases.map((purchase) => (
+                              <div key={purchase.id} className="px-3 py-3 md:px-5 md:py-3.5">
+                                <div className="grid gap-3 md:grid-cols-[minmax(0,1.7fr)_100px_150px_1fr_auto] md:items-center rounded-2xl border border-white/10 bg-background/35 p-3 md:rounded-none md:border-0 md:bg-transparent md:p-0">
                                   <div className="min-w-0">
                                     <p className="text-sm font-semibold line-clamp-1">{purchase.productName}</p>
                                     <p className="text-xs text-muted-foreground">{formatTimestamp(purchase.date) || "—"}</p>
@@ -2910,7 +2960,7 @@ export default function AdminPage() {
                                   <p className="text-sm font-semibold">{purchase.qty} шт.</p>
                                   <p className="text-sm font-black text-red-500">-{purchase.totalAmount.toLocaleString()} ₽</p>
                                   <p className="text-xs text-muted-foreground line-clamp-2">{purchase.comment || "—"}</p>
-                                  <div className="flex items-center justify-end gap-1">
+                                  <div className="flex items-center justify-start md:justify-end gap-1">
                                     <Button size="icon" variant="ghost" className="h-8 w-8 rounded-lg" onClick={() => openPurchaseDialog(purchase)}>
                                       <Pencil className="w-4 h-4" />
                                     </Button>
@@ -2924,8 +2974,10 @@ export default function AdminPage() {
                           </div>
                         </div>
                       )
-                    ) : filteredSales.length === 0 ? (
-                      <div className="p-10 text-center text-sm text-muted-foreground">Продаж пока нет.</div>
+                    ) : filteredFinanceSales.length === 0 ? (
+                      <div className="p-10 text-center text-sm text-muted-foreground">
+                        {financeQuery ? "Продажи по запросу не найдены." : "Продаж пока нет."}
+                      </div>
                     ) : (
                       <div>
                         <div className="hidden md:grid grid-cols-[minmax(0,1.7fr)_100px_150px_1fr_auto] gap-4 px-5 py-3 bg-muted/40 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
@@ -2936,13 +2988,13 @@ export default function AdminPage() {
                           <span className="text-right">Действия</span>
                         </div>
                         <div className="divide-y divide-white/10">
-                          {filteredSales.map((sale) => {
+                          {filteredFinanceSales.map((sale) => {
                             const isOrderSale = sale.sourceType === "order";
                             const saleComment = (sale.comment || "").trim();
                             const showComment = saleComment && saleComment.toLowerCase() !== "продажа с сайта";
                             return (
-                              <div key={sale.id} className="px-4 py-3 md:px-5 md:py-3.5">
-                                <div className="grid gap-3 md:grid-cols-[minmax(0,1.7fr)_100px_150px_1fr_auto] md:items-center">
+                              <div key={sale.id} className="px-3 py-3 md:px-5 md:py-3.5">
+                                <div className="grid gap-3 md:grid-cols-[minmax(0,1.7fr)_100px_150px_1fr_auto] md:items-center rounded-2xl border border-white/10 bg-background/35 p-3 md:rounded-none md:border-0 md:bg-transparent md:p-0">
                                   <div className="min-w-0">
                                     <p className="text-sm font-semibold line-clamp-1">{sale.productName}</p>
                                     <div className="flex items-center gap-2">
@@ -2955,7 +3007,7 @@ export default function AdminPage() {
                                   <p className="text-sm font-semibold">{sale.qty} шт.</p>
                                   <p className="text-sm font-black text-emerald-500">+{sale.totalAmount.toLocaleString()} ₽</p>
                                   <p className="text-xs text-muted-foreground line-clamp-2">{showComment ? saleComment : "—"}</p>
-                                  <div className="flex items-center justify-end gap-1">
+                                  <div className="flex items-center justify-start md:justify-end gap-1">
                                     <Button size="icon" variant="ghost" className="h-8 w-8 rounded-lg" onClick={() => openSaleDialog(sale)}>
                                       <Pencil className="w-4 h-4" />
                                     </Button>
