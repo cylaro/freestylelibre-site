@@ -20,8 +20,6 @@ const mainMono = JetBrains_Mono({
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://freestylelibre.pro";
 const rawOgImage = process.env.NEXT_PUBLIC_OG_IMAGE || "";
-const googleVerification = process.env.GOOGLE_SITE_VERIFICATION || process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION || "";
-const yandexVerification = process.env.YANDEX_VERIFICATION || process.env.NEXT_PUBLIC_YANDEX_VERIFICATION || "";
 const ogImage = rawOgImage.includes("images.unsplash.com") || !rawOgImage
   ? "/images/og-default.svg"
   : rawOgImage;
@@ -72,10 +70,6 @@ export const metadata: Metadata = {
     title: "FreeStyle Libre — сенсоры мониторинга глюкозы",
     description: "Сенсоры FreeStyle Libre 2 RU/EU и 3 Plus. Контроль сахара 24/7 без проколов.",
     images: [ogImage],
-  },
-  verification: {
-    ...(googleVerification ? { google: googleVerification } : {}),
-    ...(yandexVerification ? { yandex: yandexVerification } : {}),
   },
   robots: {
     index: true,

@@ -1,51 +1,48 @@
-# Добавление сайта в Google и Яндекс
+# Добавление сайта в поиск (просто и без лишнего)
 
-Этот чек-лист нужен, чтобы сайт начал индексироваться поисковиками.
+Ниже самый простой способ: подтверждение через файл.  
+Никаких переменных окружения и meta-тегов вручную.
 
-## 1) Проверь базу (уже сделано в проекте)
+## Что уже сделано в проекте
 
-- `robots.txt` генерируется из `src/app/robots.ts`
-- `sitemap.xml` генерируется из `src/app/sitemap.ts`
-- Главная страница индексируется, приватные страницы (`/admin`, `/account`, `/login`, `/register`) закрыты от индексации
+- `robots.txt` есть: `https://freestylelibre.pro/robots.txt`
+- `sitemap.xml` есть: `https://freestylelibre.pro/sitemap.xml`
+- приватные разделы (`/admin`, `/account`, `/login`, `/register`) закрыты от индексации
 
-Проверка после деплоя:
-- `https://freestylelibre.pro/robots.txt`
-- `https://freestylelibre.pro/sitemap.xml`
+## Google Search Console (через HTML-файл)
 
-## 2) Google Search Console
+1. Открой `https://search.google.com/search-console`.
+2. Добавь ресурс `https://freestylelibre.pro/` (тип: префикс URL).
+3. Выбери способ подтверждения `HTML-файл`.
+4. Скачай файл вида `googlexxxxxxxxxxxx.html`.
+5. Положи этот файл в папку `public/` проекта без изменений.
+6. Задеплой сайт.
+7. Проверь, что файл открывается по адресу  
+   `https://freestylelibre.pro/googlexxxxxxxxxxxx.html`
+8. Нажми `Подтвердить` в Search Console.
+9. В разделе Sitemap отправь `https://freestylelibre.pro/sitemap.xml`.
 
-1. Открой: `https://search.google.com/search-console`
-2. Добавь ресурс типа `Префикс URL`: `https://freestylelibre.pro/`
-3. Выбери способ подтверждения `HTML-тег`
-4. Скопируй значение `content` из тега verification
-5. Добавь переменную окружения на сборке:
-   - `GOOGLE_SITE_VERIFICATION=...`
-   - или `NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION=...`
-6. Пересобери и задеплой сайт
-7. Нажми `Подтвердить` в Search Console
-8. В разделе `Файлы Sitemap` отправь: `https://freestylelibre.pro/sitemap.xml`
+## Яндекс Вебмастер (через файл)
 
-## 3) Яндекс Вебмастер
+1. Открой `https://webmaster.yandex.ru/`.
+2. Добавь сайт `https://freestylelibre.pro/`.
+3. Выбери подтверждение через `HTML-файл`.
+4. Скачай/получи файл, который дал Яндекс.
+5. Положи этот файл в `public/` без изменений.
+6. Задеплой сайт.
+7. Проверь, что файл открывается по его URL.
+8. Нажми `Проверить` в Яндекс Вебмастере.
+9. Добавь sitemap: `https://freestylelibre.pro/sitemap.xml`.
 
-1. Открой: `https://webmaster.yandex.ru/`
-2. Добавь сайт: `https://freestylelibre.pro/`
-3. Выбери подтверждение через `meta-тег`
-4. Скопируй verification-код
-5. Добавь переменную окружения на сборке:
-   - `YANDEX_VERIFICATION=...`
-   - или `NEXT_PUBLIC_YANDEX_VERIFICATION=...`
-6. Пересобери и задеплой сайт
-7. Нажми `Проверить` в Вебмастере
-8. Добавь sitemap: `https://freestylelibre.pro/sitemap.xml`
+## Короткая самопроверка
 
-## 4) Важные условия
+1. Открывается `robots.txt`.
+2. Открывается `sitemap.xml`.
+3. Открываются verification-файлы Google/Яндекс по прямой ссылке.
+4. В обеих консолях статус: сайт подтвержден.
 
-- Сайт должен открываться без ошибок по HTTPS
-- Домен должен отдавать один канонический адрес (без дублей)
-- После первого добавления индексация может занять от нескольких дней до нескольких недель
+## Почему это лучший вариант сейчас
 
-## 5) Быстрая проверка после релиза
-
-1. Открой исходник страницы и проверь наличие `google-site-verification` / `yandex-verification`
-2. Проверь, что `robots.txt` и `sitemap.xml` доступны
-3. В Search Console и Яндекс Вебмастере отправь главную страницу на переобход
+- Минимум действий.
+- Ничего не ломается при сборке.
+- Не нужно держать verification-коды в env.
