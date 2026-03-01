@@ -330,7 +330,6 @@ export default function AdminPage() {
   const reviewAutofillRef = useRef<Set<string>>(new Set());
   
   const [searchQuery, setSearchQuery] = useState("");
-  const [financeQuery, setFinanceQuery] = useState("");
   const [isSeeding, setIsSeeding] = useState(false);
   const [isSavingProduct, setIsSavingProduct] = useState(false);
   const [isSavingPurchase, setIsSavingPurchase] = useState(false);
@@ -811,7 +810,6 @@ export default function AdminPage() {
 
 
   const searchTokens = useMemo(() => tokenizeSearch(searchQuery), [searchQuery]);
-  const financeTokens = useMemo(() => tokenizeSearch(financeQuery), [financeQuery]);
 
   const matchesTokens = useCallback((tokens: string[], values: Array<string | number | null | undefined>) => {
     if (tokens.length === 0) return true;
@@ -910,31 +908,6 @@ export default function AdminPage() {
       "продажи реализация выручка",
     ]));
   }, [sales, matchesSearch]);
-
-  const filteredFinancePurchases = useMemo(() => {
-    return filteredPurchases.filter((purchase) => matchesTokens(financeTokens, [
-      purchase.productName,
-      purchase.comment,
-      purchase.id,
-      purchase.qty,
-      purchase.totalAmount,
-      "закупки расходы поставка приход",
-    ]));
-  }, [filteredPurchases, financeTokens, matchesTokens]);
-
-  const filteredFinanceSales = useMemo(() => {
-    return filteredSales.filter((sale) => matchesTokens(financeTokens, [
-      sale.productName,
-      sale.comment,
-      sale.id,
-      sale.sourceType,
-      sale.qty,
-      sale.totalAmount,
-      "продажи выручка реализация ручная сайт",
-    ]));
-  }, [filteredSales, financeTokens, matchesTokens]);
-
-  const financeVisibleCount = financeTab === "purchases" ? filteredFinancePurchases.length : filteredFinanceSales.length;
 
   const filteredLogEntries = useMemo(() => {
     return logEntries.filter((entry) => matchesSearch([
@@ -2916,60 +2889,63 @@ export default function AdminPage() {
               </CardContent>
             </Card>
 
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-              <div>
-                <h3 className="text-2xl font-black">Операции</h3>
-                <p className="text-sm text-muted-foreground">Ручные продажи и закупки без перегруза</p>
-              </div>
-              <div className="w-full md:w-auto flex flex-col sm:flex-row sm:items-center gap-2">
-                <div className="relative flex-1 md:min-w-[260px]">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <Input
-                    value={financeQuery}
-                    onChange={(e) => setFinanceQuery(e.target.value)}
-                    placeholder={financeTab === "purchases" ? "Найти закупку..." : "Найти продажу..."}
-                    className="h-10 pl-9 rounded-xl bg-background/60 border-white/20"
-                  />
+            <Card className="rounded-[2rem] border-white/20 shadow-xl bg-background/40 backdrop-blur-xl">
+              <CardContent className="p-5 sm:p-6">
+                <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-5">
+                  <div className="space-y-2">
+                    <h3 className="text-2xl font-black">Операции</h3>
+                    <p className="text-sm text-muted-foreground">Журнал всех ручных закупок и продаж с быстрым управлением.</p>
+                    <div className="flex flex-wrap items-center gap-2 pt-1">
+                      <Badge className="bg-red-500/10 text-red-500 border-none">Закупок: {filteredPurchases.length}</Badge>
+                      <Badge className="bg-emerald-500/10 text-emerald-500 border-none">Продаж: {filteredSales.length}</Badge>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                    <div className="inline-flex w-full sm:w-auto rounded-2xl border border-white/15 bg-background/55 p-1">
+                      <Button
+                        variant="ghost"
+                        className={`h-10 rounded-xl px-4 ${financeTab === "purchases" ? "bg-primary text-primary-foreground hover:bg-primary/90" : "hover:bg-muted/70"}`}
+                        onClick={() => setFinanceTab("purchases")}
+                      >
+                        Закупки
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        className={`h-10 rounded-xl px-4 ${financeTab === "sales" ? "bg-primary text-primary-foreground hover:bg-primary/90" : "hover:bg-muted/70"}`}
+                        onClick={() => setFinanceTab("sales")}
+                      >
+                        Продажи
+                      </Button>
+                    </div>
+                    {financeTab === "purchases" ? (
+                      <Button className="h-10 rounded-xl px-5" onClick={() => openPurchaseDialog()}>
+                        <Plus className="w-4 h-4 mr-2" />
+                        Добавить закупку
+                      </Button>
+                    ) : (
+                      <Button className="h-10 rounded-xl px-5" onClick={() => openSaleDialog()}>
+                        <Plus className="w-4 h-4 mr-2" />
+                        Добавить продажу
+                      </Button>
+                    )}
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant={financeTab === "purchases" ? "default" : "outline"}
-                    className="rounded-xl h-10"
-                    onClick={() => setFinanceTab("purchases")}
-                  >
-                    Закупки
-                  </Button>
-                  <Button
-                    variant={financeTab === "sales" ? "default" : "outline"}
-                    className="rounded-xl h-10"
-                    onClick={() => setFinanceTab("sales")}
-                  >
-                    Продажи
-                  </Button>
-                  {financeTab === "purchases" ? (
-                    <Button className="rounded-xl h-10" onClick={() => openPurchaseDialog()}>Добавить</Button>
-                  ) : (
-                    <Button className="rounded-xl h-10" onClick={() => openSaleDialog()}>Добавить</Button>
-                  )}
-                  <Badge className="h-10 rounded-xl px-3 bg-background/60 border border-white/20 text-foreground">
-                    {financeVisibleCount}
-                  </Badge>
-                </div>
-              </div>
-            </div>
+              </CardContent>
+            </Card>
 
             <AnimatePresence mode="wait">
               <motion.div key={financeTab} {...panelMotion}>
                 <Card className="rounded-[2rem] border-white/20 shadow-xl bg-background/40 backdrop-blur-xl overflow-hidden">
                   <CardContent className="p-0">
                     {financeTab === "purchases" ? (
-                      filteredFinancePurchases.length === 0 ? (
+                      filteredPurchases.length === 0 ? (
                         <div className="p-10 text-center text-sm text-muted-foreground">
-                          {financeQuery ? "Закупки по запросу не найдены." : "Закупок пока нет."}
+                          Закупок пока нет.
                         </div>
                       ) : (
                         <div>
-                          <div className="hidden md:grid grid-cols-[minmax(0,1.7fr)_100px_150px_1fr_auto] gap-4 px-5 py-3 bg-muted/40 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                          <div className="hidden md:grid grid-cols-[minmax(0,1.8fr)_110px_170px_1fr_auto] gap-4 px-5 py-3 bg-muted/40 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
                             <span>Операция</span>
                             <span>Кол-во</span>
                             <span>Сумма</span>
@@ -2977,9 +2953,9 @@ export default function AdminPage() {
                             <span className="text-right">Действия</span>
                           </div>
                           <div className="divide-y divide-white/10">
-                            {filteredFinancePurchases.map((purchase) => (
+                            {filteredPurchases.map((purchase) => (
                               <div key={purchase.id} className="px-3 py-3 md:px-5 md:py-3.5">
-                                <div className="grid gap-3 md:grid-cols-[minmax(0,1.7fr)_100px_150px_1fr_auto] md:items-center rounded-2xl border border-white/10 bg-background/35 p-3 md:rounded-none md:border-0 md:bg-transparent md:p-0">
+                                <div className="grid gap-3 md:grid-cols-[minmax(0,1.8fr)_110px_170px_1fr_auto] md:items-center rounded-2xl border border-white/10 bg-background/35 p-3 md:rounded-none md:border-0 md:bg-transparent md:p-0">
                                   <div className="min-w-0">
                                     <p className="text-sm font-semibold line-clamp-1">{purchase.productName}</p>
                                     <p className="text-xs text-muted-foreground">{formatTimestamp(purchase.date) || "—"}</p>
@@ -3001,13 +2977,13 @@ export default function AdminPage() {
                           </div>
                         </div>
                       )
-                    ) : filteredFinanceSales.length === 0 ? (
+                    ) : filteredSales.length === 0 ? (
                       <div className="p-10 text-center text-sm text-muted-foreground">
-                        {financeQuery ? "Продажи по запросу не найдены." : "Продаж пока нет."}
+                        Продаж пока нет.
                       </div>
                     ) : (
                       <div>
-                        <div className="hidden md:grid grid-cols-[minmax(0,1.7fr)_100px_150px_1fr_auto] gap-4 px-5 py-3 bg-muted/40 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                        <div className="hidden md:grid grid-cols-[minmax(0,1.8fr)_110px_170px_1fr_auto] gap-4 px-5 py-3 bg-muted/40 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
                           <span>Операция</span>
                           <span>Кол-во</span>
                           <span>Сумма</span>
@@ -3015,13 +2991,13 @@ export default function AdminPage() {
                           <span className="text-right">Действия</span>
                         </div>
                         <div className="divide-y divide-white/10">
-                          {filteredFinanceSales.map((sale) => {
+                          {filteredSales.map((sale) => {
                             const isOrderSale = sale.sourceType === "order";
                             const saleComment = (sale.comment || "").trim();
                             const showComment = saleComment && saleComment.toLowerCase() !== "продажа с сайта";
                             return (
                               <div key={sale.id} className="px-3 py-3 md:px-5 md:py-3.5">
-                                <div className="grid gap-3 md:grid-cols-[minmax(0,1.7fr)_100px_150px_1fr_auto] md:items-center rounded-2xl border border-white/10 bg-background/35 p-3 md:rounded-none md:border-0 md:bg-transparent md:p-0">
+                                <div className="grid gap-3 md:grid-cols-[minmax(0,1.8fr)_110px_170px_1fr_auto] md:items-center rounded-2xl border border-white/10 bg-background/35 p-3 md:rounded-none md:border-0 md:bg-transparent md:p-0">
                                   <div className="min-w-0">
                                     <p className="text-sm font-semibold line-clamp-1">{sale.productName}</p>
                                     <div className="flex items-center gap-2">
