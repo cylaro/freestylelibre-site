@@ -13,15 +13,17 @@ export type ApiCallOptions = {
   quickAckOnFailure?: boolean;
   backgroundRetry?: boolean;
   backgroundRetryAttempts?: number;
+  idempotencyKey?: string;
 };
 
 const DEFAULT_TIMEOUT_MS = 15000;
-const DEFAULT_MUTATION_TIMEOUT_MS = 1800;
+const DEFAULT_MUTATION_TIMEOUT_MS = 7000;
 const DEFAULT_GET_RETRIES = 2;
 const DEFAULT_RETRY_DELAY_MS = 350;
 const DEFAULT_BACKGROUND_RETRY_ATTEMPTS = 3;
 const MUTATION_METHODS = new Set<ApiMethod>(["POST", "PUT", "PATCH", "DELETE"]);
 const TRANSIENT_STATUSES = new Set([408, 425, 429, 500, 502, 503, 504]);
+const IDEMPOTENCY_HEADER = "X-Idempotency-Key";
 
 function normalizeUrl(value?: string) {
   if (!value) return "";
@@ -70,6 +72,14 @@ function getBackoffDelay(baseDelayMs: number, attempt: number) {
   return Math.min(2500, baseDelayMs * attempt);
 }
 
+function generateIdempotencyKey(path: string, method: ApiMethod) {
+  const uid = typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const cleanPath = path.replace(/[^a-zA-Z0-9/_-]/g, "").slice(0, 64) || "mutation";
+  return `${method.toLowerCase()}-${cleanPath}-${uid}`;
+}
+
 function retryInBackground(url: string, init: RequestInit, timeoutMs: number, retryDelayMs: number, attempts: number) {
   void (async () => {
     for (let attempt = 1; attempt <= attempts; attempt += 1) {
@@ -105,6 +115,12 @@ export async function callApi<T extends Record<string, unknown> = Record<string,
   if (token) headers.Authorization = `Bearer ${token}`;
 
   const isMutation = MUTATION_METHODS.has(method);
+  const idempotencyKey = isMutation
+    ? (options.idempotencyKey?.trim() || generateIdempotencyKey(path, method))
+    : "";
+  if (idempotencyKey) {
+    headers[IDEMPOTENCY_HEADER] = idempotencyKey;
+  }
   const timeoutMs = Number.isFinite(options.timeoutMs)
     ? Math.max(800, Number(options.timeoutMs))
     : isMutation
@@ -143,7 +159,7 @@ export async function callApi<T extends Record<string, unknown> = Record<string,
         await sleep(retryDelayMs * attempt);
         continue;
       }
-      if (quickAckOnFailure) {
+      if (quickAckOnFailure && isMutation) {
         if (backgroundRetry && backgroundRetryAttempts > 0) {
           retryInBackground(url, requestInit, timeoutMs, retryDelayMs, backgroundRetryAttempts);
         }
@@ -161,14 +177,15 @@ export async function callApi<T extends Record<string, unknown> = Record<string,
       throw new Error(data.error || "UNAUTHORIZED");
     }
 
-    const canRetry = attempt < maxAttempts && method === "GET" && isTransientStatus(res.status);
+    const transientStatus = isTransientStatus(res.status);
+    const canRetry = attempt < maxAttempts && method === "GET" && transientStatus;
     if (canRetry) {
       await sleep(retryDelayMs * attempt);
       continue;
     }
 
-    if (quickAckOnFailure) {
-      if (backgroundRetry && backgroundRetryAttempts > 0 && isTransientStatus(res.status)) {
+    if (quickAckOnFailure && isMutation && transientStatus) {
+      if (backgroundRetry && backgroundRetryAttempts > 0) {
         retryInBackground(url, requestInit, timeoutMs, retryDelayMs, backgroundRetryAttempts);
       }
       return {
@@ -177,10 +194,10 @@ export async function callApi<T extends Record<string, unknown> = Record<string,
       };
     }
 
-    throw new Error(data.error || "API request failed");
+    throw new Error(data.error || `HTTP_${res.status}`);
   }
 
-  if (quickAckOnFailure) {
+  if (quickAckOnFailure && isMutation) {
     if (backgroundRetry && backgroundRetryAttempts > 0) {
       retryInBackground(url, requestInit, timeoutMs, retryDelayMs, backgroundRetryAttempts);
     }
