@@ -1056,6 +1056,13 @@ export default function AdminPage() {
     logs: { title: "Логи", description: "История действий администратора и ответов API." },
   };
   const activeTabMeta = tabMeta[activeTab] || tabMeta.dashboard;
+  const adminModeGroups = [
+    { key: "operations", label: "Операции", tabs: ["orders", "finance"] },
+    { key: "catalog", label: "Витрина", tabs: ["products", "reviews"] },
+    { key: "clients", label: "Клиенты", tabs: ["users"] },
+    { key: "system", label: "Система", tabs: ["dashboard", "settings", "status", "logs"] },
+  ] as const;
+  const activeModeKey = adminModeGroups.find((group) => (group.tabs as readonly string[]).includes(activeTab))?.key;
   const globalSearchResults = useMemo<AdminSearchResult[]>(() => {
     if (searchTokens.length === 0) return [];
 
@@ -1900,7 +1907,7 @@ export default function AdminPage() {
                 <h3 className="text-2xl sm:text-3xl font-black">{stats.avgOrderValue.toLocaleString()} ₽</h3>
                 <p className="text-xs text-muted-foreground mt-1">На один заказ</p>
               </div>
-              <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-purple-500/10 flex items-center justify-center text-purple-500">
+              <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-cyan-500/10 flex items-center justify-center text-cyan-500">
                 <BarChart3 className="w-6 h-6 sm:w-7 sm:h-7" />
               </div>
             </CardContent>
@@ -1937,24 +1944,41 @@ export default function AdminPage() {
               </div>
             </div>
 
-            <TabsList className="bg-background/60 backdrop-blur-xl border-white/20 p-1.5 h-auto rounded-2xl gap-2 flex w-full flex-nowrap overflow-x-auto md:flex-wrap md:overflow-x-visible">
-              <TabsTrigger value="dashboard" className="rounded-xl px-5 py-2.5 gap-2 data-[state=active]:bg-primary data-[state=active]:text-white transition-all whitespace-nowrap"><BarChart3 className="w-4 h-4" /> Дашборд</TabsTrigger>
-              <TabsTrigger value="orders" className="rounded-xl px-5 py-2.5 gap-2 data-[state=active]:bg-primary data-[state=active]:text-white transition-all whitespace-nowrap"><ShoppingCart className="w-4 h-4" /> Заказы</TabsTrigger>
-              <TabsTrigger value="finance" className="rounded-xl px-5 py-2.5 gap-2 data-[state=active]:bg-primary data-[state=active]:text-white transition-all whitespace-nowrap"><Wallet className="w-4 h-4" /> Финансы</TabsTrigger>
-              <TabsTrigger value="products" className="rounded-xl px-5 py-2.5 gap-2 data-[state=active]:bg-primary data-[state=active]:text-white transition-all whitespace-nowrap"><Package className="w-4 h-4" /> Товары</TabsTrigger>
-              <TabsTrigger value="users" className="rounded-xl px-5 py-2.5 gap-2 data-[state=active]:bg-primary data-[state=active]:text-white transition-all whitespace-nowrap"><Users className="w-4 h-4" /> Клиенты</TabsTrigger>
-              <TabsTrigger value="reviews" className="rounded-xl px-5 py-2.5 gap-2 data-[state=active]:bg-primary data-[state=active]:text-white transition-all relative whitespace-nowrap">
+            <div className="rounded-2xl border border-white/15 bg-background/45 p-1.5">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 mb-2">
+                {adminModeGroups.map((group) => {
+                  const isActive = activeModeKey === group.key;
+                  return (
+                    <button
+                      key={group.key}
+                      type="button"
+                      className={`h-9 rounded-xl text-xs font-semibold transition-colors ${isActive ? "bg-primary text-primary-foreground" : "bg-background/60 text-muted-foreground hover:text-foreground"}`}
+                      onClick={() => setActiveTab(group.tabs[0])}
+                    >
+                      {group.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <TabsList className="bg-transparent p-0 h-auto rounded-none gap-2 grid grid-cols-3 md:grid-cols-5 xl:grid-cols-9 w-full">
+                <TabsTrigger value="dashboard" className="rounded-xl px-3 py-2.5 gap-2 data-[state=active]:bg-primary data-[state=active]:text-white transition-all whitespace-nowrap"><BarChart3 className="w-4 h-4" /> Дашборд</TabsTrigger>
+                <TabsTrigger value="orders" className="rounded-xl px-3 py-2.5 gap-2 data-[state=active]:bg-primary data-[state=active]:text-white transition-all whitespace-nowrap"><ShoppingCart className="w-4 h-4" /> Заказы</TabsTrigger>
+                <TabsTrigger value="finance" className="rounded-xl px-3 py-2.5 gap-2 data-[state=active]:bg-primary data-[state=active]:text-white transition-all whitespace-nowrap"><Wallet className="w-4 h-4" /> Финансы</TabsTrigger>
+                <TabsTrigger value="products" className="rounded-xl px-3 py-2.5 gap-2 data-[state=active]:bg-primary data-[state=active]:text-white transition-all whitespace-nowrap"><Package className="w-4 h-4" /> Товары</TabsTrigger>
+                <TabsTrigger value="users" className="rounded-xl px-3 py-2.5 gap-2 data-[state=active]:bg-primary data-[state=active]:text-white transition-all whitespace-nowrap"><Users className="w-4 h-4" /> Клиенты</TabsTrigger>
+                <TabsTrigger value="reviews" className="rounded-xl px-3 py-2.5 gap-2 data-[state=active]:bg-primary data-[state=active]:text-white transition-all relative whitespace-nowrap">
                 <MessageSquare className="w-4 h-4" /> Отзывы
                 {pendingReviewsCount > 0 && (
                   <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center border-2 border-background">
                     {pendingReviewsCount}
                   </span>
                 )}
-              </TabsTrigger>
-              <TabsTrigger value="settings" className="rounded-xl px-5 py-2.5 gap-2 data-[state=active]:bg-primary data-[state=active]:text-white transition-all whitespace-nowrap"><Settings className="w-4 h-4" /> Настройки</TabsTrigger>
-              <TabsTrigger value="status" className="rounded-xl px-5 py-2.5 gap-2 data-[state=active]:bg-primary data-[state=active]:text-white transition-all whitespace-nowrap"><Activity className="w-4 h-4" /> Статусы</TabsTrigger>
-              <TabsTrigger value="logs" className="rounded-xl px-5 py-2.5 gap-2 data-[state=active]:bg-primary data-[state=active]:text-white transition-all whitespace-nowrap"><ClipboardList className="w-4 h-4" /> Логи</TabsTrigger>
-            </TabsList>
+                </TabsTrigger>
+                <TabsTrigger value="settings" className="rounded-xl px-3 py-2.5 gap-2 data-[state=active]:bg-primary data-[state=active]:text-white transition-all whitespace-nowrap"><Settings className="w-4 h-4" /> Настройки</TabsTrigger>
+                <TabsTrigger value="status" className="rounded-xl px-3 py-2.5 gap-2 data-[state=active]:bg-primary data-[state=active]:text-white transition-all whitespace-nowrap"><Activity className="w-4 h-4" /> Статусы</TabsTrigger>
+                <TabsTrigger value="logs" className="rounded-xl px-3 py-2.5 gap-2 data-[state=active]:bg-primary data-[state=active]:text-white transition-all whitespace-nowrap"><ClipboardList className="w-4 h-4" /> Логи</TabsTrigger>
+              </TabsList>
+            </div>
 
             <div className="space-y-3">
               <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full">
@@ -1997,7 +2021,7 @@ export default function AdminPage() {
                           onClick={() => handleSearchNavigate(result)}
                         >
                           <p className="text-sm font-semibold">{result.title}</p>
-                          <p className="text-xs text-muted-foreground">{result.description}</p>
+                          <p className="text-xs text-muted-foreground line-clamp-1">{result.description}</p>
                         </button>
                       ))}
                     </div>

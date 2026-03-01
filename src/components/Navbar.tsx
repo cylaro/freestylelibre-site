@@ -63,7 +63,7 @@ export function Navbar() {
           {/* Desktop Menu */}
           <div className="hidden md:flex items-center gap-1 rounded-xl px-1.5 py-1 bg-background/50 border border-white/20">
             <a href="#catalog" onClick={handleScrollTo("catalog")} className="rounded-lg px-3 py-2 text-sm font-semibold hover:bg-white/10 transition-colors">Каталог</a>
-            <a href="#advantages" onClick={handleScrollTo("advantages")} className="rounded-lg px-3 py-2 text-sm font-semibold hover:bg-white/10 transition-colors">Преимущества</a>
+            <a href="#comparison" onClick={handleScrollTo("comparison")} className="rounded-lg px-3 py-2 text-sm font-semibold hover:bg-white/10 transition-colors">Сравнение</a>
             <a href="#guide" onClick={handleScrollTo("guide")} className="rounded-lg px-3 py-2 text-sm font-semibold hover:bg-white/10 transition-colors">Как установить</a>
             <a href="#faq" onClick={handleScrollTo("faq")} className="rounded-lg px-3 py-2 text-sm font-semibold hover:bg-white/10 transition-colors">FAQ</a>
           </div>
@@ -163,7 +163,7 @@ export function Navbar() {
             <div className="glass-panel rounded-2xl px-4 py-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm font-semibold">
                 <a href="#catalog" onClick={handleScrollTo("catalog")} className="rounded-xl px-3 py-2 bg-background/40">Каталог</a>
-                <a href="#advantages" onClick={handleScrollTo("advantages")} className="rounded-xl px-3 py-2 bg-background/40">Преимущества</a>
+                <a href="#comparison" onClick={handleScrollTo("comparison")} className="rounded-xl px-3 py-2 bg-background/40">Сравнение</a>
                 <a href="#guide" onClick={handleScrollTo("guide")} className="rounded-xl px-3 py-2 bg-background/40">Как установить</a>
                 <a href="#faq" onClick={handleScrollTo("faq")} className="rounded-xl px-3 py-2 bg-background/40">FAQ</a>
               </div>

@@ -116,14 +116,15 @@ export function Catalog() {
             Каталог пуст. Выполните инициализацию товаров в админ-панели.
           </div>
         ) : (
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+          <div className="balanced-grid md:grid-cols-2 lg:grid-cols-3">
             {products.map((product) => (
               <motion.div
                 key={product.id}
                 whileHover={reduceMotion ? undefined : { y: -8 }}
                 transition={{ duration: 0.3 }}
+                className="h-full"
               >
-                <Card className="h-full overflow-hidden rounded-3xl glass-panel">
+                <Card className="h-full overflow-hidden rounded-3xl glass-panel flex flex-col">
                   <div className="aspect-square relative overflow-hidden group bg-muted/20">
                     {product.imageUrl ? (
                       <ResilientImage
@@ -157,21 +158,21 @@ export function Catalog() {
                       </div>
                     )}
                   </div>
-                  <CardHeader>
+                  <CardHeader className="pb-3">
                     {product.features.length > 0 && (
-                      <div className="flex flex-wrap gap-2 mb-2">
-                        {product.features.map((f, i) => (
+                      <div className="flex flex-wrap gap-2 mb-2 min-h-7">
+                        {product.features.slice(0, 3).map((f, i) => (
                           <Badge key={i} variant="outline" className="text-[10px] rounded-lg">{f}</Badge>
                         ))}
                       </div>
                     )}
                     <CardTitle className="text-xl font-black leading-tight">{product.name}</CardTitle>
                   </CardHeader>
-                  <CardContent>
-                    <p className="text-sm text-muted-foreground line-clamp-2 mb-4 leading-relaxed">
+                  <CardContent className="flex-1 flex flex-col">
+                    <p className="text-sm text-muted-foreground line-clamp-2 min-h-[2.8rem] mb-4 leading-relaxed">
                       {product.description}
                     </p>
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-end gap-3 mt-auto">
                       <span className="text-2xl font-black text-primary">
                         {product.discountPercent > 0 
                           ? Math.round(product.price * (1 - product.discountPercent / 100)) 

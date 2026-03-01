@@ -43,7 +43,7 @@ export function Guide() {
           <h2 className="section-title">Установка за 4 простых шага</h2>
           <p className="section-lead">Без сложных действий. Сделайте один раз и дальше пользуйтесь спокойно.</p>
         </div>
-        <div className="relative grid md:grid-cols-2 lg:grid-cols-4 gap-6 lg:gap-8">
+        <div className="relative balanced-grid md:grid-cols-2 lg:grid-cols-4">
           <div className="hidden lg:block absolute left-[12%] right-[12%] top-16 h-px bg-gradient-to-r from-transparent via-border to-transparent" />
           {steps.map((step, i) => (
             <motion.div
@@ -52,7 +52,7 @@ export function Guide() {
               whileInView={reduceMotion ? undefined : { opacity: 1, scale: 1 }}
               viewport={{ once: true }}
               transition={{ delay: i * 0.08, duration: 0.5 }}
-              className="glass-panel relative p-6 sm:p-7 rounded-3xl group"
+              className="glass-panel relative p-6 sm:p-7 rounded-3xl group min-h-[210px]"
             >
               <span className="text-5xl font-black text-primary/12 absolute top-4 right-4 group-hover:text-primary/25 transition-colors">
                 {step.number}

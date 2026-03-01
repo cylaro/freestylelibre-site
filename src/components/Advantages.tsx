@@ -58,7 +58,7 @@ export function Advantages() {
           </p>
         </div>
 
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+        <div className="balanced-grid md:grid-cols-2 lg:grid-cols-3">
           {advantages.map((adv, index) => (
             <motion.div
               key={index}
@@ -66,7 +66,7 @@ export function Advantages() {
               whileInView={reduceMotion ? undefined : { opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ delay: index * 0.08, duration: 0.5 }}
-              className="glass-panel interactive-lift p-7 rounded-3xl"
+              className="glass-panel interactive-lift p-7 rounded-3xl min-h-[230px] flex flex-col"
             >
               <div className="mb-5 flex items-center justify-between">
                 <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-background/65 border border-white/20">
@@ -77,7 +77,7 @@ export function Advantages() {
                 </span>
               </div>
               <h3 className="text-xl font-black mb-2 leading-tight">{adv.title}</h3>
-              <p className="text-muted-foreground text-sm leading-relaxed">{adv.description}</p>
+              <p className="text-muted-foreground text-sm leading-relaxed mt-auto">{adv.description}</p>
             </motion.div>
           ))}
         </div>

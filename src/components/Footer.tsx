@@ -24,7 +24,7 @@ export function Footer() {
               <h4 className="font-black mb-4 text-sm uppercase tracking-[0.16em] text-muted-foreground">Навигация</h4>
               <ul className="space-y-2 text-sm">
                 <li><Link href="/#catalog" className="hover:text-primary transition-colors font-semibold">Каталог</Link></li>
-                <li><Link href="/#advantages" className="hover:text-primary transition-colors font-semibold">Преимущества</Link></li>
+                <li><Link href="/#comparison" className="hover:text-primary transition-colors font-semibold">Сравнение</Link></li>
                 <li><Link href="/#guide" className="hover:text-primary transition-colors font-semibold">Инструкция</Link></li>
                 <li><Link href="/#faq" className="hover:text-primary transition-colors font-semibold">FAQ</Link></li>
               </ul>
