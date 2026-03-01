@@ -61,7 +61,8 @@ import {
   Wallet,
   RefreshCw,
   Search,
-  Eye
+  Eye,
+  X
 } from "lucide-react";
 import Link from "next/link";
 import { ResilientImage } from "@/components/ui/resilient-image";
@@ -123,21 +124,51 @@ const SEARCH_SYNONYMS: Record<string, string[]> = {
   клиенты: ["покупатели", "пользователи", "заказчики", "customer", "customers"],
   покупатели: ["клиенты", "пользователи", "заказчики"],
   пользователи: ["клиенты", "покупатели"],
+  пользователь: ["клиенты", "покупатели", "user", "users"],
   клиент: ["клиенты", "покупатель", "покупатели"],
+  заказчик: ["клиент", "покупатель", "заказчики"],
   заказы: ["заявки", "покупки", "orders", "order"],
   заказ: ["заказы", "заявка", "orders"],
+  новый: ["новые", "fresh", "new"],
+  новые: ["новый", "актуальные", "new"],
+  архив: ["история", "завершенные", "archive", "closed"],
   заявки: ["заказы", "покупки"],
   финансы: ["деньги", "прибыль", "выручка", "расходы", "бухгалтерия"],
+  деньги: ["финансы", "бюджет", "касса"],
+  выручка: ["доход", "оборот", "revenue", "sales"],
+  прибыль: ["маржа", "profit", "доход"],
+  расходы: ["затраты", "издержки", "expenses", "закупки"],
+  касса: ["финансы", "деньги", "оплата"],
   закупки: ["приход", "поставки", "поставка"],
+  закупка: ["закупки", "приход", "поставки", "поставка"],
+  поставка: ["закупки", "приход", "доставка"],
   склад: ["остатки", "инвентарь", "stock"],
   остатки: ["склад", "инвентарь", "stock"],
+  инвентарь: ["склад", "остатки", "stock"],
   продажи: ["реализация", "выручка", "sales", "sale"],
   продажа: ["продажи", "sale", "sales"],
+  оплата: ["платеж", "платежи", "payment", "деньги"],
+  платеж: ["оплата", "платежи", "payment"],
   товары: ["каталог", "сенсоры", "продукты", "products", "product"],
+  товар: ["товары", "модель", "позиция", "product"],
+  модель: ["товар", "сенсор", "libre"],
+  сенсор: ["сенсоры", "товар", "модель", "libre"],
   отзывы: ["оценки", "комментарии", "reviews", "review"],
+  отзыв: ["отзывы", "комментарии", "оценка", "review"],
+  рейтинг: ["оценка", "отзывы", "review"],
   логи: ["журнал", "logs", "log"],
+  лог: ["логи", "журнал", "log", "events"],
   статусы: ["система", "здоровье", "health", "monitoring"],
+  статус: ["статусы", "состояние", "health", "system"],
+  система: ["статусы", "здоровье", "health", "monitoring"],
   vip: ["лояльность", "скидка", "уровень", "привилегии"],
+  лояльность: ["vip", "скидка", "уровень"],
+  доставка: ["курьер", "служба", "delivery", "сдэк"],
+  самовывоз: ["pickup", "забрать", "выдача"],
+  настройки: ["конфиг", "config", "параметры"],
+  админка: ["админ", "панель", "кабинет"],
+  админ: ["админка", "панель", "кабинет"],
+  telegram: ["телеграм", "tg", "бот"],
   телеграм: ["telegram", "tg", "бот"],
 };
 
@@ -1297,6 +1328,7 @@ export default function AdminPage() {
 
   const handleSearchNavigate = useCallback((result: AdminSearchResult) => {
     setActiveTab(result.tab);
+    setSearchQuery("");
     const targetId = result.anchorId || `tab-${result.tab}`;
     const highlightClasses = ["ring-2", "ring-primary/40", "ring-offset-2", "ring-offset-background"];
 
@@ -1971,73 +2003,64 @@ export default function AdminPage() {
               <TabsTrigger value="logs" className="rounded-xl h-10 px-2 gap-1.5 data-[state=active]:bg-primary data-[state=active]:text-white transition-all text-[11px] sm:text-sm"><ClipboardList className="w-3.5 h-3.5" /> Логи</TabsTrigger>
             </TabsList>
 
-            <div className="space-y-3">
-              <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full">
-                <div className="relative flex-1">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <Input 
-                    placeholder="Поиск по всей админке: клиенты, заказы, товары, продажи, статусы..." 
-                    className="pl-9 h-11 bg-background/60 border-white/20 rounded-xl"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                  />
-                </div>
-                <div className="flex items-center gap-2">
-                  <Badge className="h-11 rounded-xl px-3 bg-background/60 text-foreground border border-white/20">
-                    {searchTokens.length > 0 ? `Совпадений: ${searchResultsCount}` : "Поиск готов"}
+            <div className="space-y-2">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  placeholder="Поиск по админке"
+                  className="pl-9 pr-28 h-10 bg-background/55 border-white/20 rounded-xl shadow-sm"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+                <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                  <Badge className="h-7 rounded-lg px-2.5 bg-muted/60 text-foreground border border-white/20 text-[10px]">
+                    {searchResultsCount}
                   </Badge>
                   <Button
-                    variant="outline"
-                    className="h-11 rounded-xl bg-background/60 border-white/20 px-4"
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/70"
                     onClick={() => setSearchQuery("")}
                     disabled={!searchQuery}
+                    aria-label="Очистить поиск"
                   >
-                    Очистить
+                    <X className="w-3.5 h-3.5" />
                   </Button>
                 </div>
+
+                {searchTokens.length > 0 && (
+                  <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-40 rounded-2xl border border-white/20 bg-background/86 backdrop-blur-xl shadow-2xl max-h-[320px] overflow-y-auto">
+                    {globalSearchResults.length === 0 ? (
+                      <div className="px-4 py-5 text-sm text-muted-foreground">
+                        Ничего не найдено. Попробуйте другие слова.
+                      </div>
+                    ) : (
+                      <div className="p-2">
+                        {globalSearchResults.map((result) => (
+                          <button
+                            key={result.id}
+                            type="button"
+                            className="w-full text-left rounded-xl px-3 py-2.5 hover:bg-muted/60 transition-colors"
+                            onClick={() => handleSearchNavigate(result)}
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="text-sm font-semibold line-clamp-1">{result.title}</p>
+                              <Badge className="shrink-0 rounded-full border-none bg-primary/10 text-primary text-[10px]">
+                                {tabMeta[result.tab]?.title || "Раздел"}
+                              </Badge>
+                            </div>
+                            <p className="text-xs text-muted-foreground line-clamp-1">{result.description}</p>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
-              {searchTokens.length === 0 && (
-                <div className="flex flex-wrap items-center gap-2">
-                  {["новые заказы", "клиенты", "закупки", "продажи", "vip", "telegram"].map((hint) => (
-                    <button
-                      key={hint}
-                      type="button"
-                      onClick={() => setSearchQuery(hint)}
-                      className="h-8 rounded-full px-3 text-xs font-semibold border border-white/20 bg-background/50 hover:bg-muted/60 transition-colors"
-                    >
-                      {hint}
-                    </button>
-                  ))}
-                </div>
-              )}
-              {searchTokens.length > 0 && (
-                <div className="rounded-2xl border border-white/20 bg-background/70 backdrop-blur-xl max-h-[340px] overflow-y-auto">
-                  {globalSearchResults.length === 0 ? (
-                    <div className="px-4 py-5 text-sm text-muted-foreground">
-                      Ничего не найдено. Попробуйте другие слова или синонимы.
-                    </div>
-                  ) : (
-                    <div className="p-2">
-                      {globalSearchResults.map((result) => (
-                        <button
-                          key={result.id}
-                          type="button"
-                          className="w-full text-left rounded-xl px-3 py-2.5 hover:bg-muted/60 transition-colors"
-                          onClick={() => handleSearchNavigate(result)}
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <p className="text-sm font-semibold line-clamp-1">{result.title}</p>
-                            <Badge className="shrink-0 rounded-full border-none bg-primary/10 text-primary text-[10px]">
-                              {tabMeta[result.tab]?.title || "Раздел"}
-                            </Badge>
-                          </div>
-                          <p className="text-xs text-muted-foreground line-clamp-1">{result.description}</p>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
+              <p className="text-[11px] text-muted-foreground">
+                Поиск по разделам, заказам, клиентам, товарам, финансам, логам и синонимам.
+              </p>
             </div>
           </div>
 
