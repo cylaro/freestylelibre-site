@@ -8,13 +8,13 @@ import { Toaster } from "@/components/ui/sonner";
 
 const mainSans = Manrope({
   variable: "--font-main-sans",
-  subsets: ["latin"],
+  subsets: ["latin", "cyrillic"],
   weight: ["500", "600", "700", "800"],
 });
 
 const mainMono = JetBrains_Mono({
   variable: "--font-main-mono",
-  subsets: ["latin"],
+  subsets: ["latin", "cyrillic"],
   weight: ["500", "600", "700"],
 });
 

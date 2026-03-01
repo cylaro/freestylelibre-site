@@ -13,6 +13,12 @@ const HomeClientFx = dynamic(() => import("@/components/HomeClientFx").then((mod
 
 export default function Home() {
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://freestylelibre.pro";
+  const seoPages = [
+    `${siteUrl}/freestyle-libre-2-ru-eu`,
+    `${siteUrl}/freestyle-libre-3-plus`,
+    `${siteUrl}/dostavka-i-oplata`,
+    `${siteUrl}/ustanovka-freestyle-libre`,
+  ];
   const jsonLd = {
     "@context": "https://schema.org",
     "@graph": [
@@ -21,11 +27,35 @@ export default function Home() {
         name: "FreeStyle Store",
         url: siteUrl,
         sameAs: ["https://t.me/scheglovvrn"],
+        contactPoint: [
+          {
+            "@type": "ContactPoint",
+            contactType: "customer support",
+            availableLanguage: ["ru"],
+            url: "https://t.me/scheglovvrn",
+          },
+        ],
       },
       {
         "@type": "WebSite",
         name: "FreeStyle Store",
         url: siteUrl,
+      },
+      {
+        "@type": "WebPage",
+        name: "FreeStyle Libre — сенсоры мониторинга глюкозы",
+        url: siteUrl,
+        description:
+          "Оригинальные сенсоры FreeStyle Libre 2 RU/EU и 3 Plus. Каталог, условия покупки, доставка и поддержка.",
+      },
+      {
+        "@type": "ItemList",
+        name: "Полезные страницы по сенсорам FreeStyle Libre",
+        itemListElement: seoPages.map((url, index) => ({
+          "@type": "ListItem",
+          position: index + 1,
+          url,
+        })),
       },
     ],
   };

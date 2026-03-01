@@ -4,6 +4,13 @@ export const dynamic = "force-static";
 
 export default function robots(): MetadataRoute.Robots {
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://freestylelibre.pro";
+  let host = "freestylelibre.pro";
+  try {
+    host = new URL(siteUrl).host;
+  } catch {
+    host = "freestylelibre.pro";
+  }
+
   return {
     rules: [
       {
@@ -12,7 +19,7 @@ export default function robots(): MetadataRoute.Robots {
         disallow: ["/admin", "/admin/*", "/account", "/account/*", "/login", "/register"],
       },
     ],
-    host: siteUrl,
+    host,
     sitemap: `${siteUrl}/sitemap.xml`,
   };
 }

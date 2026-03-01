@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { motion, useReducedMotion, useScroll, useTransform } from "framer-motion";
 import { ChevronRight, Zap } from "lucide-react";
@@ -84,6 +85,13 @@ export function Hero() {
                 <ChevronRight className="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" />
               </a>
             </Button>
+          </div>
+
+          <div className="mt-5 flex flex-wrap items-center gap-3 text-xs sm:text-sm text-muted-foreground">
+            <span className="font-semibold">Полезные страницы:</span>
+            <Link href="/freestyle-libre-2-ru-eu" className="hover:text-foreground transition-colors">Libre 2 RU/EU</Link>
+            <Link href="/freestyle-libre-3-plus" className="hover:text-foreground transition-colors">Libre 3 Plus</Link>
+            <Link href="/dostavka-i-oplata" className="hover:text-foreground transition-colors">Доставка и оплата</Link>
           </div>
         </motion.div>
 
