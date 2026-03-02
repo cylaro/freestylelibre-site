@@ -88,8 +88,8 @@ export function Hero() {
           </h1>
           
           <p className="text-[15px] sm:text-lg md:text-xl text-muted-foreground mb-7 sm:mb-8 max-w-2xl leading-relaxed">
-            Здесь продаются оригинальные сенсоры FreeStyle Libre для ежедневного контроля глюкозы. 
-            Вы получаете понятный выбор моделей, быструю доставку и поддержку после покупки.
+            Здесь продаются оригинальные сенсоры FreeStyle Libre для ежедневного контроля глюкозы.
+            Можно купить в Воронеже и оформить доставку по России с поддержкой после покупки.
           </p>
 
           <div className="flex flex-wrap gap-4 sm:gap-5">

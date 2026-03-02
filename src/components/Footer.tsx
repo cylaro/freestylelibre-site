@@ -28,7 +28,7 @@ export function Footer() {
                 <li><Link href="/#guide" className="hover:text-primary transition-colors font-semibold">Инструкция</Link></li>
                 <li><Link href="/#faq" className="hover:text-primary transition-colors font-semibold">FAQ</Link></li>
                 <li><Link href="/dostavka-i-oplata" className="hover:text-primary transition-colors font-semibold">Доставка и оплата</Link></li>
-                <li><Link href="/freestyle-libre" className="hover:text-primary transition-colors font-semibold">О FreeStyle Libre</Link></li>
+                <li><Link href="/freestyle-libre-voronezh" className="hover:text-primary transition-colors font-semibold">Купить в Воронеже</Link></li>
               </ul>
             </div>
 
