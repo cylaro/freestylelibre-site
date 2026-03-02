@@ -17,6 +17,7 @@ import {
 import { useTheme } from "next-themes";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { usePathname, useRouter } from "next/navigation";
+import { scrollToAnchorWithRetry } from "@/lib/scroll";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -58,14 +59,11 @@ export function Navbar() {
       router.push(`/#${id}`);
       return;
     }
-    const el = document.getElementById(id);
-    if (el) {
-      el.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
-    }
+    scrollToAnchorWithRetry(id, reduceMotion ? "auto" : "smooth");
   };
 
   return (
-    <nav className="fixed top-0 w-full z-50 pt-2 sm:pt-3">
+    <nav data-main-nav="true" className="fixed top-0 w-full z-50 pt-2 sm:pt-3">
       <div className="container">
         <div className="glass-panel-strong surface-noise h-16 rounded-2xl px-4 sm:px-5 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-3 min-w-0">

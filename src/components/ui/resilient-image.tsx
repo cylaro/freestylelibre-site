@@ -2,11 +2,14 @@
 
 import Image, { type ImageProps } from "next/image";
 import { useEffect, useMemo, useState } from "react";
+import { optimizeImageUrl } from "@/lib/imageUrl";
 
 type ResilientImageProps = Omit<ImageProps, "src"> & {
   src?: string | null;
   fallbackSrc: string;
   timeoutMs?: number;
+  optimizeWidth?: number;
+  optimizeQuality?: number;
 };
 
 function normalizeSrc(value: string | null | undefined) {
@@ -18,11 +21,16 @@ export function ResilientImage({
   src,
   fallbackSrc,
   timeoutMs = 1600,
+  optimizeWidth,
+  optimizeQuality,
   alt,
   ...rest
 }: ResilientImageProps) {
   void timeoutMs;
-  const primarySrc = useMemo(() => normalizeSrc(src), [src]);
+  const primarySrc = useMemo(
+    () => optimizeImageUrl(normalizeSrc(src), { width: optimizeWidth, quality: optimizeQuality }),
+    [src, optimizeWidth, optimizeQuality]
+  );
   const fallback = useMemo(() => normalizeSrc(fallbackSrc), [fallbackSrc]);
   const [resolvedSrc, setResolvedSrc] = useState(primarySrc || fallback);
 

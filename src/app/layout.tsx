@@ -28,12 +28,18 @@ export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   applicationName: "FreeStyle Store",
   title: {
-    default: "FreeStyle Libre — сенсоры мониторинга глюкозы",
+    default: "FreeStyle Libre в Воронеже — сенсоры Libre 2 RU/EU и 3 Plus",
     template: "%s | FreeStyle Store",
   },
-  description: "Купить сенсоры FreeStyle Libre 2 RU/EU и 3 Plus. Мониторинг глюкозы 24/7 без проколов.",
+  description:
+    "Купить сенсоры FreeStyle Libre 2 RU/EU и 3 Plus в Воронеже и с доставкой по России. Контроль глюкозы 24/7 без проколов.",
   keywords: [
     "FreeStyle Libre",
+    "фристайл либре",
+    "фристайл либре воронеж",
+    "либре воронеж",
+    "freestyle libre воронеж",
+    "freestyle libre voronezh",
     "сенсоры глюкозы",
     "мониторинг глюкозы",
     "FreeStyle Libre 2",
@@ -51,8 +57,9 @@ export const metadata: Metadata = {
     apple: "/favicon.ico",
   },
   openGraph: {
-    title: "FreeStyle Libre — сенсоры мониторинга глюкозы",
-    description: "Сенсоры FreeStyle Libre 2 RU/EU и 3 Plus. Контроль сахара 24/7 без проколов.",
+    title: "FreeStyle Libre в Воронеже — сенсоры Libre 2 RU/EU и 3 Plus",
+    description:
+      "Оригинальные сенсоры FreeStyle Libre в Воронеже и с доставкой по России. Поддержка перед и после покупки.",
     type: "website",
     locale: "ru_RU",
     url: siteUrl,
@@ -67,8 +74,9 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "FreeStyle Libre — сенсоры мониторинга глюкозы",
-    description: "Сенсоры FreeStyle Libre 2 RU/EU и 3 Plus. Контроль сахара 24/7 без проколов.",
+    title: "FreeStyle Libre в Воронеже — сенсоры Libre 2 RU/EU и 3 Plus",
+    description:
+      "Купить FreeStyle Libre в Воронеже и с доставкой по России. Libre 2 RU/EU и Libre 3 Plus.",
     images: [ogImage],
   },
   robots: {

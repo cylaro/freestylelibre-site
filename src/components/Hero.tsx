@@ -8,6 +8,7 @@ import { ChevronRight, Zap } from "lucide-react";
 import { settingsDefaults } from "@/lib/schemas";
 import { ResilientImage } from "@/components/ui/resilient-image";
 import { getPublicSettingsCached, getPublicSettingsSnapshot } from "@/lib/publicData";
+import { scrollToAnchorWithRetry } from "@/lib/scroll";
 
 export function Hero() {
   const { scrollY } = useScroll();
@@ -17,6 +18,11 @@ export function Hero() {
   const [heroImageUrl, setHeroImageUrl] = useState(
     () => getPublicSettingsSnapshot()?.media.heroImageUrl || settingsDefaults.media.heroImageUrl
   );
+
+  const handleCatalogClick = (event: React.MouseEvent<HTMLAnchorElement>) => {
+    event.preventDefault();
+    scrollToAnchorWithRetry("catalog", reduceMotion ? "auto" : "smooth");
+  };
 
   useEffect(() => {
     let active = true;
@@ -35,6 +41,15 @@ export function Hero() {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const src = heroImageUrl || settingsDefaults.media.heroImageUrl;
+    if (!src) return;
+    const img = new window.Image();
+    img.decoding = "async";
+    img.src = src;
+  }, [heroImageUrl]);
 
   return (
     <section className="relative min-h-[82vh] lg:min-h-[92vh] flex items-center pt-20 sm:pt-24 lg:pt-28 pb-8 sm:pb-12 overflow-hidden">
@@ -80,7 +95,7 @@ export function Hero() {
 
           <div className="flex flex-wrap gap-4 sm:gap-5">
             <Button size="lg" className="h-12 sm:h-14 w-full sm:w-auto px-8 sm:px-10 text-base sm:text-lg rounded-2xl shadow-lg shadow-primary/25 hover:shadow-primary/40 transition-all duration-300 group" asChild>
-              <a href="#catalog">
+              <a href="#catalog" onClick={handleCatalogClick}>
                 Выбрать сенсор
                 <ChevronRight className="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" />
               </a>
@@ -89,6 +104,8 @@ export function Hero() {
 
           <div className="mt-5 flex flex-wrap items-center gap-3 text-xs sm:text-sm text-muted-foreground">
             <span className="font-semibold">Полезные страницы:</span>
+            <Link href="/freestyle-libre" className="hover:text-foreground transition-colors">FreeStyle Libre</Link>
+            <Link href="/freestyle-libre-voronezh" className="hover:text-foreground transition-colors">Libre в Воронеже</Link>
             <Link href="/freestyle-libre-2-ru-eu" className="hover:text-foreground transition-colors">Libre 2 RU/EU</Link>
             <Link href="/freestyle-libre-3-plus" className="hover:text-foreground transition-colors">Libre 3 Plus</Link>
             <Link href="/dostavka-i-oplata" className="hover:text-foreground transition-colors">Доставка и оплата</Link>
@@ -108,6 +125,8 @@ export function Hero() {
               alt="FreeStyle Libre Monitoring"
               fill
               priority
+              optimizeWidth={1440}
+              optimizeQuality={78}
               sizes="(max-width: 1024px) 100vw, 50vw"
               timeoutMs={1800}
               className="object-cover transition-transform duration-700 group-hover:scale-105"

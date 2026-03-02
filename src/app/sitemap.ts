@@ -8,6 +8,8 @@ export default function sitemap(): MetadataRoute.Sitemap {
 
   const pages: Array<{ path: string; priority: number; changeFrequency: "daily" | "weekly" | "monthly" }> = [
     { path: "/", priority: 1, changeFrequency: "daily" },
+    { path: "/freestyle-libre", priority: 0.96, changeFrequency: "weekly" },
+    { path: "/freestyle-libre-voronezh", priority: 0.95, changeFrequency: "weekly" },
     { path: "/freestyle-libre-2-ru-eu", priority: 0.9, changeFrequency: "weekly" },
     { path: "/freestyle-libre-3-plus", priority: 0.9, changeFrequency: "weekly" },
     { path: "/dostavka-i-oplata", priority: 0.85, changeFrequency: "weekly" },

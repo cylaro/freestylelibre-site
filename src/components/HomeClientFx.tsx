@@ -2,6 +2,7 @@
 
 import { motion, useReducedMotion, useScroll, useSpring } from "framer-motion";
 import { useEffect } from "react";
+import { scrollToHashWithRetry } from "@/lib/scroll";
 
 export function HomeClientFx() {
   const { scrollYProgress } = useScroll();
@@ -14,12 +15,19 @@ export function HomeClientFx() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const hash = window.location.hash;
-    if (!hash) return;
-    const id = hash.replace("#", "");
-    const element = document.getElementById(id);
-    if (!element) return;
-    element.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+    const behavior = reduceMotion ? "auto" : "smooth";
+    const syncHashScroll = () => {
+      const hash = window.location.hash;
+      if (!hash) return;
+      scrollToHashWithRetry(hash, behavior);
+    };
+
+    const timer = window.setTimeout(syncHashScroll, 40);
+    window.addEventListener("hashchange", syncHashScroll);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("hashchange", syncHashScroll);
+    };
   }, [reduceMotion]);
 
   return (

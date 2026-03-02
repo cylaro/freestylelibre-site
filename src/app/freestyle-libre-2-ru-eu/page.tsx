@@ -92,6 +92,9 @@ export default function Libre2Page() {
               <Link href="/dostavka-i-oplata" className="rounded-xl border px-5 py-2.5 font-semibold">
                 Доставка и оплата
               </Link>
+              <Link href="/freestyle-libre-voronezh" className="rounded-xl border px-5 py-2.5 font-semibold">
+                Libre в Воронеже
+              </Link>
             </div>
           </section>
         </div>

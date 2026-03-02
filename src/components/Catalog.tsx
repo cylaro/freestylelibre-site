@@ -125,6 +125,8 @@ export function Catalog() {
                         fallbackSrc="/images/fallback-product.svg"
                         alt={product.name}
                         fill
+                        optimizeWidth={960}
+                        optimizeQuality={74}
                         sizes="(max-width: 1024px) 100vw, 33vw"
                         timeoutMs={1600}
                         className="object-cover transition-transform duration-500 group-hover:scale-105"

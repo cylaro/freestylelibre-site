@@ -3,8 +3,8 @@ import { normalizeProduct, normalizeSettings, Product, SettingsConfig, settingsD
 
 const SETTINGS_CACHE_KEY = "public_settings_cache_v1";
 const PRODUCTS_CACHE_KEY = "public_products_cache_v1";
-const SETTINGS_TTL_MS = 5 * 60 * 1000;
-const PRODUCTS_TTL_MS = 2 * 60 * 1000;
+const SETTINGS_TTL_MS = 60 * 60 * 1000;
+const PRODUCTS_TTL_MS = 10 * 60 * 1000;
 
 type CacheEnvelope<T> = {
   value: T;
@@ -33,7 +33,6 @@ function readStorageCache<T>(key: string): CacheEnvelope<T> | null {
     const parsed = JSON.parse(raw) as CacheEnvelope<T>;
     if (!parsed || typeof parsed !== "object") return null;
     if (typeof parsed.expiresAt !== "number") return null;
-    if (parsed.expiresAt <= getNow()) return null;
     return parsed;
   } catch {
     return null;
@@ -58,7 +57,7 @@ export async function getPublicSettingsCached(forceRefresh = false): Promise<Set
     const storageEntry = readStorageCache<SettingsConfig>(SETTINGS_CACHE_KEY);
     if (storageEntry) {
       settingsMemoryCache = storageEntry;
-      return storageEntry.value;
+      if (isFresh(storageEntry)) return storageEntry.value;
     }
   }
 
@@ -94,7 +93,7 @@ export async function getPublicSettingsCached(forceRefresh = false): Promise<Set
 }
 
 export function getPublicSettingsSnapshot(): SettingsConfig | null {
-  if (isFresh(settingsMemoryCache)) {
+  if (settingsMemoryCache) {
     return settingsMemoryCache!.value;
   }
   const storageEntry = readStorageCache<SettingsConfig>(SETTINGS_CACHE_KEY);
@@ -114,7 +113,7 @@ export async function getPublicProductsCached(forceRefresh = false): Promise<Pro
     const storageEntry = readStorageCache<Product[]>(PRODUCTS_CACHE_KEY);
     if (storageEntry) {
       productsMemoryCache = storageEntry;
-      return storageEntry.value;
+      if (isFresh(storageEntry)) return storageEntry.value;
     }
   }
 
@@ -152,7 +151,7 @@ export async function getPublicProductsCached(forceRefresh = false): Promise<Pro
 }
 
 export function getPublicProductsSnapshot(): Product[] | null {
-  if (isFresh(productsMemoryCache)) {
+  if (productsMemoryCache) {
     return productsMemoryCache!.value;
   }
   const storageEntry = readStorageCache<Product[]>(PRODUCTS_CACHE_KEY);

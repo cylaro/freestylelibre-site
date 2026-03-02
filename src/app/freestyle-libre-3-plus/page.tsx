@@ -82,6 +82,9 @@ export default function Libre3PlusPage() {
               <Link href="/ustanovka-freestyle-libre" className="rounded-xl border px-5 py-2.5 font-semibold">
                 Инструкция по установке
               </Link>
+              <Link href="/freestyle-libre-voronezh" className="rounded-xl border px-5 py-2.5 font-semibold">
+                Libre в Воронеже
+              </Link>
             </div>
           </section>
         </div>

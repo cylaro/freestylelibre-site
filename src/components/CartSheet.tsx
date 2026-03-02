@@ -352,6 +352,8 @@ export function CartSheet() {
                                   alt={item.name}
                                   width={96}
                                   height={96}
+                                  optimizeWidth={256}
+                                  optimizeQuality={72}
                                   timeoutMs={1400}
                                   className="h-full w-full object-cover group-hover:scale-110 transition-transform duration-500"
                                 />

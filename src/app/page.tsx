@@ -14,6 +14,8 @@ const HomeClientFx = dynamic(() => import("@/components/HomeClientFx").then((mod
 export default function Home() {
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://freestylelibre.pro";
   const seoPages = [
+    `${siteUrl}/freestyle-libre`,
+    `${siteUrl}/freestyle-libre-voronezh`,
     `${siteUrl}/freestyle-libre-2-ru-eu`,
     `${siteUrl}/freestyle-libre-3-plus`,
     `${siteUrl}/dostavka-i-oplata`,
@@ -27,6 +29,12 @@ export default function Home() {
         name: "FreeStyle Store",
         url: siteUrl,
         sameAs: ["https://t.me/scheglovvrn"],
+        address: {
+          "@type": "PostalAddress",
+          addressLocality: "Воронеж",
+          addressCountry: "RU",
+        },
+        areaServed: ["Воронеж", "Россия"],
         contactPoint: [
           {
             "@type": "ContactPoint",
@@ -42,11 +50,22 @@ export default function Home() {
         url: siteUrl,
       },
       {
+        "@type": "Store",
+        name: "FreeStyle Store",
+        url: siteUrl,
+        address: {
+          "@type": "PostalAddress",
+          addressLocality: "Воронеж",
+          addressCountry: "RU",
+        },
+        areaServed: ["Воронеж", "Россия"],
+      },
+      {
         "@type": "WebPage",
-        name: "FreeStyle Libre — сенсоры мониторинга глюкозы",
+        name: "FreeStyle Libre в Воронеже — сенсоры мониторинга глюкозы",
         url: siteUrl,
         description:
-          "Оригинальные сенсоры FreeStyle Libre 2 RU/EU и 3 Plus. Каталог, условия покупки, доставка и поддержка.",
+          "Оригинальные сенсоры FreeStyle Libre 2 RU/EU и 3 Plus. Воронеж, доставка по России, каталог и поддержка.",
       },
       {
         "@type": "ItemList",
